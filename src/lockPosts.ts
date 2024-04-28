@@ -58,18 +58,17 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
 
     let posts: Post[] = [];
     for (const item of postsDueChecking) {
-        posts.push(await context.reddit.getPostById(item.member));
+        const post = await context.reddit.getPostById(item.member);
+        if (!post.locked) {
+            posts.push(post);
+        }
     }
 
     console.log(`${posts.length} posts need checking.`);
 
-    // Filter out posts that are already locked.
-    posts = posts.filter(post => !post.locked);
-    console.log(`${posts.length} posts remain after excluding posts that are already locked.`);
-
     const subreddit = await context.reddit.getCurrentSubreddit();
 
-    if (settings[AppSetting.IgnoreMods] as boolean) {
+    if (posts.length && settings[AppSetting.IgnoreMods] as boolean) {
         const modList = await context.reddit.getModerators({subredditName: subreddit.name}).all();
         posts = posts.filter(post => post.authorName !== "AutoModerator" && !modList.some(mod => post.authorName === mod.username));
         console.log(`${posts.length} posts remain after excluding moderators.`);
