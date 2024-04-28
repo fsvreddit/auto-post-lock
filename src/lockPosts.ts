@@ -100,7 +100,7 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
     const userFlairCSSClassToIgnore = settings[AppSetting.IgnoreUserFlairCSSClass] as string | undefined;
     if (posts.length && (userFlairToIgnore || userFlairCSSClassToIgnore)) {
         const distinctUsers: User[] = [];
-        for (const username of _.uniq(posts.map(post => post.authorName))) {
+        for (const username of _.uniq(posts.map(post => post.authorName).filter(user => user !== "[deleted]"))) {
             const user = await getUserOrUndefined(username, context);
             if (user) {
                 distinctUsers.push(user);
