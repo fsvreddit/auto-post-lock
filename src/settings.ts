@@ -41,7 +41,7 @@ export const appSettings: SettingsFormField[] = [
         name: AppSetting.LockDelayUnits,
         type: "select",
         label: "Lock delay units",
-        options: Object.entries(TimeUnit).map(entry => ({label: entry[0], value: entry[1]})),
+        options: Object.entries(TimeUnit).map(([label, value]) => ({label, value})),
         defaultValue: [TimeUnit.Months],
         onValidate: selectFieldHasOptionChosen,
     },
