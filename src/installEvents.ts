@@ -6,7 +6,7 @@ export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, con
     const currentJobs = await context.scheduler.listJobs();
     await Promise.all(currentJobs.map(job => context.scheduler.cancelJob(job.id)));
 
-    // Choose a randomised schedule per install. Run every 5 minutes but not all running at the same time.
+    // Choose a randomised schedule per install. Run every 5 minutes but not installs running at the same time.
     const minute = Math.floor(Math.random() * 5);
 
     await context.scheduler.runJob({

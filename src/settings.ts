@@ -9,6 +9,8 @@ export enum AppSetting {
     IgnoreUserFlairCSSClass = "ignoreUserFlairCSSClass",
     IgnorePostFlairText = "ignorePostFlairText",
     IgnorePostFlairCSSClass = "ignorePostFlairCSSClass",
+    IgnorePostFlairTemplate = "ignorePostFlairTemplate",
+    LockedFlairTemplateId = "lockedFlairTemplateId",
 }
 
 export enum TimeUnit {
@@ -24,6 +26,8 @@ function selectFieldHasOptionChosen (event: SettingsFormFieldValidatorEvent<stri
         return "You must choose an option";
     }
 }
+
+const flairTemplateRegex = /^[0-9a-z]{8}(?:-[0-9a-z]{4}){4}[0-9a-z]{8}$/;
 
 export const appSettings: SettingsFormField[] = [
     {
@@ -80,5 +84,32 @@ export const appSettings: SettingsFormField[] = [
         type: "string",
         label: "Ignore posts with one of these flair CSS classes",
         helpText: "Optional. A comma-separated list of user flair CSS classes that won't have posts auto-locked",
+    },
+    {
+        name: AppSetting.IgnorePostFlairTemplate,
+        type: "string",
+        label: "Ignore posts with one of these flair template IDs",
+        helpText: "Optional. A comma-separated list of user flair template IDs that won't have posts auto-locked",
+        onValidate: ({value}) => {
+            if (!value) {
+                return;
+            }
+            const templates = value.split(",").map(template => template.toLowerCase().trim());
+            const invalidTemplate = templates.find(template => !template.match(flairTemplateRegex));
+            if (invalidTemplate) {
+                return `Flair template ${invalidTemplate} is not a valid flair template ID`;
+            }
+        },
+    },
+    {
+        name: AppSetting.LockedFlairTemplateId,
+        type: "string",
+        label: "Set flair on posts when locking posts",
+        helpText: "Optional. A flair template ID to set when locking posts.",
+        onValidate: ({value}) => {
+            if (value && !value.match(flairTemplateRegex)) {
+                return `Flair template ${value} is not a valid flair template ID`;
+            }
+        },
     },
 ];

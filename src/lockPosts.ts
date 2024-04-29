@@ -95,6 +95,13 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
         console.log(`${posts.length} posts remain after excluding post flair CSS class.`);
     }
 
+    const postFlairTemplateToIgnore = settings[AppSetting.IgnorePostFlairTemplate] as string | undefined;
+    if (posts.length && postFlairTemplateToIgnore) {
+        const postTemplates = postFlairTemplateToIgnore.split(",").map(template => template.toLowerCase().trim());
+        posts = posts.filter(post => !post.flair || !post.flair.templateId || !postTemplates.includes(post.flair.templateId.toLowerCase()));
+        console.log(`${posts.length} posts remain after excluding post flair template IDs.`);
+    }
+
     const userFlairToIgnore = settings[AppSetting.IgnoreUserFlairText] as string | undefined;
     const userFlairCSSClassToIgnore = settings[AppSetting.IgnoreUserFlairCSSClass] as string | undefined;
     if (posts.length && (userFlairToIgnore || userFlairCSSClassToIgnore)) {
@@ -131,8 +138,17 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
     }
 
     if (posts.length) {
+        const flairTemplate = settings[AppSetting.LockedFlairTemplateId] as string | undefined;
+
         for (const post of posts) {
             await post.lock();
+            if (flairTemplate) {
+                await context.reddit.setPostFlair({
+                    postId: post.id,
+                    subredditName: subreddit.name,
+                    flairTemplateId: flairTemplate,
+                });
+            }
         }
         console.log(`${posts.length} posts have been locked.`);
     }
