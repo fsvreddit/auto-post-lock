@@ -1,0 +1,115 @@
+import {SettingsFormField, SettingsFormFieldValidatorEvent} from "@devvit/public-api";
+
+export enum AppSetting {
+    LockDelay = "lockDelay",
+    LockDelayUnits = "lockDelayUnits",
+    IgnoreMods = "ignoreMods",
+    IgnoreUsers = "ignoreUsers",
+    IgnoreUserFlairText = "ignoreUserFlairText",
+    IgnoreUserFlairCSSClass = "ignoreUserFlairCSSClass",
+    IgnorePostFlairText = "ignorePostFlairText",
+    IgnorePostFlairCSSClass = "ignorePostFlairCSSClass",
+    IgnorePostFlairTemplate = "ignorePostFlairTemplate",
+    LockedFlairTemplateId = "lockedFlairTemplateId",
+}
+
+export enum TimeUnit {
+    Minutes = "minutes",
+    Hours = "hours",
+    Days = "days",
+    Weeks = "weeks",
+    Months = "months",
+}
+
+function selectFieldHasOptionChosen (event: SettingsFormFieldValidatorEvent<string[]>): void | string {
+    if (!event.value || event.value.length !== 1) {
+        return "You must choose an option";
+    }
+}
+
+const flairTemplateRegex = /^[0-9a-z]{8}(?:-[0-9a-z]{4}){4}[0-9a-z]{8}$/;
+
+export const appSettings: SettingsFormField[] = [
+    {
+        name: AppSetting.LockDelay,
+        type: "number",
+        label: "Lock delay",
+        defaultValue: 1,
+        onValidate: ({value}) => {
+            if (value && value < 1) {
+                return "Value must be at least 1";
+            }
+        },
+    },
+    {
+        name: AppSetting.LockDelayUnits,
+        type: "select",
+        label: "Lock delay units",
+        options: Object.entries(TimeUnit).map(([label, value]) => ({label, value})),
+        defaultValue: [TimeUnit.Months],
+        onValidate: selectFieldHasOptionChosen,
+    },
+    {
+        name: AppSetting.IgnoreMods,
+        type: "boolean",
+        label: "Ignore posts from moderators",
+        defaultValue: true,
+    },
+    {
+        name: AppSetting.IgnoreUsers,
+        type: "string",
+        label: "Ignore these users",
+        helpText: "Optional. A comma-separated list of users who won't have posts auto-locked",
+    },
+    {
+        name: AppSetting.IgnoreUserFlairText,
+        type: "string",
+        label: "Ignore users with one of these flairs",
+        helpText: "Optional. A comma-separated list of user flair text that won't have posts auto-locked",
+    },
+    {
+        name: AppSetting.IgnoreUserFlairCSSClass,
+        type: "string",
+        label: "Ignore users with one of these flair CSS classes",
+        helpText: "Optional. A comma-separated list of user flair CSS classes that won't have posts auto-locked",
+    },
+    {
+        name: AppSetting.IgnorePostFlairText,
+        type: "string",
+        label: "Ignore posts with one of these flairs",
+        helpText: "Optional. A comma-separated list of user flair text that won't have posts auto-locked",
+    },
+    {
+        name: AppSetting.IgnorePostFlairCSSClass,
+        type: "string",
+        label: "Ignore posts with one of these flair CSS classes",
+        helpText: "Optional. A comma-separated list of user flair CSS classes that won't have posts auto-locked",
+    },
+    {
+        name: AppSetting.IgnorePostFlairTemplate,
+        type: "string",
+        label: "Ignore posts with one of these flair template IDs",
+        helpText: "Optional. A comma-separated list of user flair template IDs that won't have posts auto-locked",
+        onValidate: ({value}) => {
+            if (!value) {
+                return;
+            }
+            const templates = value.split(",").map(template => template.toLowerCase().trim());
+            const invalidTemplate = templates.find(template => !template.match(flairTemplateRegex));
+            if (invalidTemplate) {
+                return `Flair template ${invalidTemplate} is not a valid flair template ID`;
+            }
+        },
+    },
+    {
+        name: AppSetting.LockedFlairTemplateId,
+        type: "string",
+        label: "Set flair on posts when locking posts",
+        helpText: "Optional. A flair template ID to set when locking posts.",
+        onValidate: ({value}) => {
+            if (value && !value.match(flairTemplateRegex)) {
+                return `Flair template ${value} is not a valid flair template ID`;
+            }
+        },
+    },
+];

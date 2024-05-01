@@ -1,0 +1,25 @@
+{
+  "private": true,
+  "name": "auto-post-lock",
+  "version": "0.0.0",
+  "license": "BSD-3-Clause",
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:unit",
+    "test:unit": "vitest --run"
+  },
+  "dependencies": {
+    "@devvit/public-api": "0.10.19",
+    "@types/lodash": "^4.17.0",
+    "date-fns": "^3.6.0",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "eslint": "^8.48.0",
+    "eslint-plugin-vitest": "^0.2.8",
+    "typescript": "5.3.2",
+    "vitest": "^1.0.4"
+  }
+}
