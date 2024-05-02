@@ -1,4 +1,5 @@
 import {SettingsFormField, SettingsFormFieldValidatorEvent} from "@devvit/public-api";
+import {addSeconds} from "date-fns";
 
 export enum AppSetting {
     LockDelay = "lockDelay",
@@ -35,10 +36,16 @@ export const appSettings: SettingsFormField[] = [
         type: "number",
         label: "Lock delay",
         defaultValue: 1,
-        onValidate: ({value}) => {
+        onValidate: async ({value}, context) => {
             if (value && value < 1) {
                 return "Value must be at least 1";
             }
+
+            // Schedule may have changed, so reschedule next ad-hoc run.
+            await context.scheduler.runJob({
+                runAt: addSeconds(new Date(), 5),
+                name: "rescheduleAdhocTasks",
+            });
         },
     },
     {

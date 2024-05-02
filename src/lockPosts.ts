@@ -1,21 +1,22 @@
 import {Post, ScheduledJobEvent, TriggerContext, User, UserFlair} from "@devvit/public-api";
-import {subDays, subHours, subMinutes, subMonths, subWeeks} from "date-fns";
+import {addDays, addHours, addMinutes, addMonths, addSeconds, addWeeks, differenceInSeconds} from "date-fns";
 import {AppSetting, TimeUnit} from "./settings.js";
 import {POST_LIST} from "./constants.js";
 import _ from "lodash";
+import {parseExpression} from "cron-parser";
 
-export function getCutoff (lockDelay: number, lockDelayUnits: string) {
+export function lockTime (date: Date, lockDelay: number, lockDelayUnits: string) {
     switch (lockDelayUnits) {
         case "minutes":
-            return subMinutes(new Date(), lockDelay);
+            return addMinutes(date, lockDelay);
         case "hours":
-            return subHours(new Date(), lockDelay);
+            return addHours(date, lockDelay);
         case "days":
-            return subDays(new Date(), lockDelay);
+            return addDays(date, lockDelay);
         case "weeks":
-            return subWeeks(new Date(), lockDelay);
+            return addWeeks(date, lockDelay);
         case "months":
-            return subMonths(new Date(), lockDelay);
+            return addMonths(date, lockDelay);
         default:
             throw new Error("Unhandled lock delay units");
     }
@@ -47,7 +48,7 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
     const lockDelay = settings[AppSetting.LockDelay] as number ?? 1;
     const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as string[] ?? [TimeUnit.Months])[0];
 
-    const cutOffDate = getCutoff(lockDelay, lockDelayUnits);
+    const cutOffDate = lockTime(new Date(), -lockDelay, lockDelayUnits);
 
     // Get posts that need checking.
     const postsDueChecking = await context.redis.zRange(POST_LIST, 0, cutOffDate.getTime(), {by: "score"});
@@ -154,4 +155,66 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
     }
 
     await context.redis.zRem(POST_LIST, postsDueChecking.map(item => item.member));
+    await scheduleNextAdhocRun(context);
 }
+
+export async function rescheduleAdhocTasks (_: ScheduledJobEvent, context: TriggerContext) {
+    await scheduleNextAdhocRun(context);
+}
+
+export async function scheduleNextAdhocRun (context: TriggerContext) {
+    // Get the first post ordered by date ascending.
+    const postsDueChecking = await context.redis.zRange(POST_LIST, 0, 0, {by: "rank"});
+    if (postsDueChecking.length === 0) {
+        console.log("Adhoc Scheduler: No posts in lock queue. No ad-hoc task is needed.");
+        return;
+    }
+
+    // Is there already an ad-hoc scheduled job? If so, return.
+    const jobs = await context.scheduler.listJobs();
+    if (jobs.length > 1) {
+        console.log("Adhoc Scheduler: There is already an ad-hoc task scheduled.");
+        return;
+    }
+
+    const settings = await context.settings.getAll();
+    const lockDelay = settings[AppSetting.LockDelay] as number ?? 1;
+    const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as string[] ?? [TimeUnit.Months])[0];
+
+    // If next lock event is due in the past, use the current date/time otherwise use the lock time due from the first post in queue.
+    const nextLockTime = _.max([new Date(), lockTime(new Date(postsDueChecking[0].score), lockDelay, lockDelayUnits)]) ?? new Date();
+
+    console.log(`Adhoc Scheduler: Next lock event due: ${nextLockTime.toISOString()}`);
+
+    const cron = await context.redis.get("cron");
+    if (!cron) {
+        // Should never happen, because this is set during install/upgrade.
+        console.log("Adhoc Scheduler: Cron is not set in redis!");
+        return;
+    }
+
+    const interval = parseExpression(cron);
+    const nextScheduledRun = interval.next().toDate();
+    console.log(`Adhoc Scheduler: Next scheduled job run: ${nextScheduledRun.toISOString()}`);
+
+    if (nextLockTime > nextScheduledRun) {
+        console.log("Adhoc Scheduler: Next scheduled run is before the next lock event. No ad-hoc task needed.");
+        return;
+    }
+
+    if (differenceInSeconds(nextScheduledRun, nextLockTime) < 30) {
+        // We don't need an ad-hoc run if the next scheduled run time is in the next 30 seconds.
+        console.log("Adhoc Scheduler: Scheduled run is within the next 30 seconds of the next lock event. No ad-hoc task needed.");
+        return;
+    }
+
+    const nextAdhocRun = addSeconds(nextLockTime, 1);
+
+    await context.scheduler.runJob({
+        runAt: nextAdhocRun,
+        name: "checkForPostsToLock",
+    });
+
+    console.log(`Adhoc Scheduler: Ad-hoc job scheduled for ${nextAdhocRun.toISOString()}`);
+}
+
