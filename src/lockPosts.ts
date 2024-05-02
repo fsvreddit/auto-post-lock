@@ -43,7 +43,8 @@ async function getUserOrUndefined (username: string, context: TriggerContext): P
     }
 }
 
-export async function checkForPostsToLock (_event: ScheduledJobEvent, context: TriggerContext) {
+export async function checkForPostsToLock (event: ScheduledJobEvent, context: TriggerContext) {
+    console.log(`Post checker: Running job of type ${event.data?.source as string | undefined ?? "unknown"}`);
     const settings = await context.settings.getAll();
     const lockDelay = settings[AppSetting.LockDelay] as number ?? 1;
     const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as string[] ?? [TimeUnit.Months])[0];
@@ -160,6 +161,13 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
 }
 
 export async function rescheduleAdhocTasks (_: ScheduledJobEvent, context: TriggerContext) {
+    const jobs = await context.scheduler.listJobs();
+
+    const adhocJobs = jobs.filter(job => job.name === "checkForPostsToLock" && job.data?.source === "adhoc");
+    if (adhocJobs.length) {
+        console.log("Settings Update: Cancelled adhoc jobs.");
+        await Promise.all(adhocJobs.map(job => context.scheduler.cancelJob(job.id)));
+    }
     await scheduleNextAdhocRun(context);
 }
 
@@ -173,7 +181,7 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
 
     // Is there already an ad-hoc scheduled job? If so, return.
     const jobs = await context.scheduler.listJobs();
-    if (jobs.filter(job => job.name === "checkForPostsToLock").length > 1) {
+    if (jobs.some(job => job.name === "checkForPostsToLock" && job.data?.source === "adhoc")) {
         console.log("Adhoc Scheduler: There is already an ad-hoc task scheduled.");
         return;
     }
@@ -212,6 +220,7 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
     const nextAdhocRun = addSeconds(nextLockTime, 1);
 
     await context.scheduler.runJob({
+        data: {source: "adhoc"},
         runAt: nextAdhocRun,
         name: "checkForPostsToLock",
     });

@@ -14,6 +14,7 @@ export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, con
     await context.redis.set("cron", cron);
 
     await context.scheduler.runJob({
+        data: {source: "scheduled"},
         cron,
         name: "checkForPostsToLock",
     });
