@@ -53,7 +53,8 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
     // Get posts that need checking.
     const postsDueChecking = await context.redis.zRange(POST_LIST, 0, cutOffDate.getTime(), {by: "score"});
     if (postsDueChecking.length === 0) {
-        console.log("No posts are due a check.");
+        console.log("Post checker: No posts are due a check.");
+        await scheduleNextAdhocRun(context);
         return;
     }
 
@@ -65,42 +66,42 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
         }
     }
 
-    console.log(`${posts.length} posts need checking.`);
+    console.log(`Post checker: ${posts.length} posts need checking.`);
 
     const subreddit = await context.reddit.getCurrentSubreddit();
 
     if (posts.length && settings[AppSetting.IgnoreMods] as boolean) {
         const modList = await context.reddit.getModerators({subredditName: subreddit.name}).all();
         posts = posts.filter(post => post.authorName !== "AutoModerator" && !modList.some(mod => post.authorName === mod.username));
-        console.log(`${posts.length} posts remain after excluding moderators.`);
+        console.log(`Post checker: ${posts.length} posts remain after excluding moderators.`);
     }
 
     const usersToIgnore = settings[AppSetting.IgnoreUsers] as string | undefined;
     if (posts.length && usersToIgnore) {
         const userList = usersToIgnore.split(",").map(userName => userName.toLowerCase().trim());
         posts = posts.filter(post => !userList.includes(post.authorName.toLowerCase()));
-        console.log(`${posts.length} posts remain after excluding named users.`);
+        console.log(`Post checker: ${posts.length} posts remain after excluding named users.`);
     }
 
     const postFlairToIgnore = settings[AppSetting.IgnorePostFlairText] as string | undefined;
     if (posts.length && postFlairToIgnore) {
         const flairs = postFlairToIgnore.split(",").map(flair => flair.toLowerCase().trim());
         posts = posts.filter(post => !post.flair || !post.flair.text || !flairs.includes(post.flair.text.toLowerCase()));
-        console.log(`${posts.length} posts remain after excluding post flair text.`);
+        console.log(`Post checker: ${posts.length} posts remain after excluding post flair text.`);
     }
 
     const postFlairCSSClassToIgnore = settings[AppSetting.IgnorePostFlairCSSClass] as string | undefined;
     if (posts.length && postFlairCSSClassToIgnore) {
         const flairs = postFlairCSSClassToIgnore.split(",").map(flair => flair.toLowerCase().trim());
         posts = posts.filter(post => !post.flair || !post.flair.cssClass || !flairs.includes(post.flair.cssClass.toLowerCase()));
-        console.log(`${posts.length} posts remain after excluding post flair CSS class.`);
+        console.log(`Post checker: ${posts.length} posts remain after excluding post flair CSS class.`);
     }
 
     const postFlairTemplateToIgnore = settings[AppSetting.IgnorePostFlairTemplate] as string | undefined;
     if (posts.length && postFlairTemplateToIgnore) {
         const postTemplates = postFlairTemplateToIgnore.split(",").map(template => template.toLowerCase().trim());
         posts = posts.filter(post => !post.flair || !post.flair.templateId || !postTemplates.includes(post.flair.templateId.toLowerCase()));
-        console.log(`${posts.length} posts remain after excluding post flair template IDs.`);
+        console.log(`Post checker: ${posts.length} posts remain after excluding post flair template IDs.`);
     }
 
     const userFlairToIgnore = settings[AppSetting.IgnoreUserFlairText] as string | undefined;
@@ -124,7 +125,7 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
             const usersWithMatchingFlair = userFlairs.filter(item => item.flair && item.flair.flairText && flairList.includes(item.flair.flairText.toLowerCase()));
             if (usersWithMatchingFlair.length) {
                 posts = posts.filter(post => !usersWithMatchingFlair.some(user => user.username === post.authorName));
-                console.log(`${posts.length} posts remain after excluding user flair text.`);
+                console.log(`Post checker: ${posts.length} posts remain after excluding user flair text.`);
             }
         }
 
@@ -133,7 +134,7 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
             const usersWithMatchingFlair = userFlairs.filter(item => item.flair && item.flair.flairCssClass && flairList.includes(item.flair.flairCssClass.toLowerCase()));
             if (usersWithMatchingFlair.length) {
                 posts = posts.filter(post => !usersWithMatchingFlair.some(user => user.username === post.authorName));
-                console.log(`${posts.length} posts remain after excluding user flair CSS class.`);
+                console.log(`Post checker: ${posts.length} posts remain after excluding user flair CSS class.`);
             }
         }
     }
@@ -151,7 +152,7 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
                 });
             }
         }
-        console.log(`${posts.length} posts have been locked.`);
+        console.log(`Post checker: ${posts.length} posts have been locked.`);
     }
 
     await context.redis.zRem(POST_LIST, postsDueChecking.map(item => item.member));
@@ -172,7 +173,7 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
 
     // Is there already an ad-hoc scheduled job? If so, return.
     const jobs = await context.scheduler.listJobs();
-    if (jobs.length > 1) {
+    if (jobs.filter(job => job.name === "checkForPostsToLock").length > 1) {
         console.log("Adhoc Scheduler: There is already an ad-hoc task scheduled.");
         return;
     }
