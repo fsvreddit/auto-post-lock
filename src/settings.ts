@@ -12,6 +12,7 @@ export enum AppSetting {
     IgnorePostFlairCSSClass = "ignorePostFlairCSSClass",
     IgnorePostFlairTemplate = "ignorePostFlairTemplate",
     LockedFlairTemplateId = "lockedFlairTemplateId",
+    HandleHistoricalPosts = "handleHistoricalPosts",
 }
 
 export enum TimeUnit {
@@ -118,5 +119,12 @@ export const appSettings: SettingsFormField[] = [
                 return `Flair template ${value} is not a valid flair template ID`;
             }
         },
+    },
+    {
+        name: AppSetting.HandleHistoricalPosts,
+        type: "boolean",
+        label: "Lock posts made before app install",
+        helpText: "If enabled, the app will do a one-time look back on the most recent 1000 posts in the subreddit and lock those.",
+        defaultValue: false,
     },
 ];

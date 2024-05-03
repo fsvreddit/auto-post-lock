@@ -1,4 +1,4 @@
-import {Post, ScheduledJobEvent, TriggerContext, User, UserFlair} from "@devvit/public-api";
+import {Post, ScheduledJobEvent, TriggerContext, User, UserFlair, ZMember} from "@devvit/public-api";
 import {addDays, addHours, addMinutes, addMonths, addSeconds, addWeeks, differenceInSeconds} from "date-fns";
 import {AppSetting, TimeUnit} from "./settings.js";
 import {POST_LIST} from "./constants.js";
@@ -51,8 +51,8 @@ export async function checkForPostsToLock (event: ScheduledJobEvent, context: Tr
 
     const cutOffDate = lockTime(new Date(), -lockDelay, lockDelayUnits);
 
-    // Get posts that need checking.
-    const postsDueChecking = await context.redis.zRange(POST_LIST, 0, cutOffDate.getTime(), {by: "score"});
+    // Get first 50 posts that need checking.
+    const postsDueChecking = (await context.redis.zRange(POST_LIST, 0, cutOffDate.getTime(), {by: "score"})).slice(0, 50);
     if (postsDueChecking.length === 0) {
         console.log("Post checker: No posts are due a check.");
         await scheduleNextAdhocRun(context);
@@ -161,6 +161,7 @@ export async function checkForPostsToLock (event: ScheduledJobEvent, context: Tr
 }
 
 export async function rescheduleAdhocTasks (_: ScheduledJobEvent, context: TriggerContext) {
+    console.log("Settings Update: Settings have been updated. Requeuing jobs if needed.");
     const jobs = await context.scheduler.listJobs();
 
     const adhocJobs = jobs.filter(job => job.name === "checkForPostsToLock" && job.data?.source === "adhoc");
@@ -168,6 +169,25 @@ export async function rescheduleAdhocTasks (_: ScheduledJobEvent, context: Trigg
         console.log("Settings Update: Cancelled adhoc jobs.");
         await Promise.all(adhocJobs.map(job => context.scheduler.cancelJob(job.id)));
     }
+
+    const settings = await context.settings.getAll();
+    if (settings[AppSetting.HandleHistoricalPosts] as boolean ?? false) {
+        const redisKey = "historicalPostsQueued";
+        const historicalPostsQueued = await context.redis.get(redisKey);
+        if (!historicalPostsQueued) {
+            console.log("Settings Update: Historical posts option enabled. Queueing most recent 1000 posts.");
+            const subreddit = await context.reddit.getCurrentSubreddit();
+            const posts = await context.reddit.getNewPosts({
+                subredditName: subreddit.name,
+                limit: 1000,
+            }).all();
+            const unlockedPosts = posts.filter(post => !post.locked);
+            console.log(`Settings Update: Found ${unlockedPosts.length} posts to add to queue.`);
+            await context.redis.zAdd(POST_LIST, ...unlockedPosts.map(post => <ZMember>({member: post.id, score: post.createdAt.getTime()})));
+            await context.redis.set(redisKey, new Date().getTime().toString());
+        }
+    }
+
     await scheduleNextAdhocRun(context);
 }
 
