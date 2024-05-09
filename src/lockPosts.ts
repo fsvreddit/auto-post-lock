@@ -1,21 +1,22 @@
-import {Post, ScheduledJobEvent, TriggerContext, User, UserFlair} from "@devvit/public-api";
-import {subDays, subHours, subMinutes, subMonths, subWeeks} from "date-fns";
+import {Post, ScheduledJobEvent, TriggerContext, User, UserFlair, ZMember} from "@devvit/public-api";
+import {addDays, addHours, addMinutes, addMonths, addSeconds, addWeeks, differenceInSeconds} from "date-fns";
 import {AppSetting, TimeUnit} from "./settings.js";
-import {POST_LIST} from "./constants.js";
+import {CHECK_FOR_POSTS_TO_LOCK_JOB, POST_LIST} from "./constants.js";
 import _ from "lodash";
+import {parseExpression} from "cron-parser";
 
-export function getCutoff (lockDelay: number, lockDelayUnits: string) {
+export function lockTime (date: Date, lockDelay: number, lockDelayUnits: string) {
     switch (lockDelayUnits) {
         case "minutes":
-            return subMinutes(new Date(), lockDelay);
+            return addMinutes(date, lockDelay);
         case "hours":
-            return subHours(new Date(), lockDelay);
+            return addHours(date, lockDelay);
         case "days":
-            return subDays(new Date(), lockDelay);
+            return addDays(date, lockDelay);
         case "weeks":
-            return subWeeks(new Date(), lockDelay);
+            return addWeeks(date, lockDelay);
         case "months":
-            return subMonths(new Date(), lockDelay);
+            return addMonths(date, lockDelay);
         default:
             throw new Error("Unhandled lock delay units");
     }
@@ -42,17 +43,19 @@ async function getUserOrUndefined (username: string, context: TriggerContext): P
     }
 }
 
-export async function checkForPostsToLock (_event: ScheduledJobEvent, context: TriggerContext) {
+export async function checkForPostsToLock (event: ScheduledJobEvent, context: TriggerContext) {
+    console.log(`Post checker: Running job of type ${event.data?.source as string | undefined ?? "unknown"}`);
     const settings = await context.settings.getAll();
     const lockDelay = settings[AppSetting.LockDelay] as number ?? 1;
     const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as string[] ?? [TimeUnit.Months])[0];
 
-    const cutOffDate = getCutoff(lockDelay, lockDelayUnits);
+    const cutOffDate = lockTime(new Date(), -lockDelay, lockDelayUnits);
 
-    // Get posts that need checking.
-    const postsDueChecking = await context.redis.zRange(POST_LIST, 0, cutOffDate.getTime(), {by: "score"});
+    // Get first 50 posts that need checking.
+    const postsDueChecking = (await context.redis.zRange(POST_LIST, 0, cutOffDate.getTime(), {by: "score"})).slice(0, 50);
     if (postsDueChecking.length === 0) {
-        console.log("No posts are due a check.");
+        console.log("Post checker: No posts are due a check.");
+        await scheduleNextAdhocRun(context);
         return;
     }
 
@@ -64,42 +67,42 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
         }
     }
 
-    console.log(`${posts.length} posts need checking.`);
+    console.log(`Post checker: ${posts.length} posts need checking.`);
 
     const subreddit = await context.reddit.getCurrentSubreddit();
 
     if (posts.length && settings[AppSetting.IgnoreMods] as boolean) {
         const modList = await context.reddit.getModerators({subredditName: subreddit.name}).all();
         posts = posts.filter(post => post.authorName !== "AutoModerator" && !modList.some(mod => post.authorName === mod.username));
-        console.log(`${posts.length} posts remain after excluding moderators.`);
+        console.log(`Post checker: ${posts.length} posts remain after excluding moderators.`);
     }
 
     const usersToIgnore = settings[AppSetting.IgnoreUsers] as string | undefined;
     if (posts.length && usersToIgnore) {
         const userList = usersToIgnore.split(",").map(userName => userName.toLowerCase().trim());
         posts = posts.filter(post => !userList.includes(post.authorName.toLowerCase()));
-        console.log(`${posts.length} posts remain after excluding named users.`);
+        console.log(`Post checker: ${posts.length} posts remain after excluding named users.`);
     }
 
     const postFlairToIgnore = settings[AppSetting.IgnorePostFlairText] as string | undefined;
     if (posts.length && postFlairToIgnore) {
         const flairs = postFlairToIgnore.split(",").map(flair => flair.toLowerCase().trim());
         posts = posts.filter(post => !post.flair || !post.flair.text || !flairs.includes(post.flair.text.toLowerCase()));
-        console.log(`${posts.length} posts remain after excluding post flair text.`);
+        console.log(`Post checker: ${posts.length} posts remain after excluding post flair text.`);
     }
 
     const postFlairCSSClassToIgnore = settings[AppSetting.IgnorePostFlairCSSClass] as string | undefined;
     if (posts.length && postFlairCSSClassToIgnore) {
         const flairs = postFlairCSSClassToIgnore.split(",").map(flair => flair.toLowerCase().trim());
         posts = posts.filter(post => !post.flair || !post.flair.cssClass || !flairs.includes(post.flair.cssClass.toLowerCase()));
-        console.log(`${posts.length} posts remain after excluding post flair CSS class.`);
+        console.log(`Post checker: ${posts.length} posts remain after excluding post flair CSS class.`);
     }
 
     const postFlairTemplateToIgnore = settings[AppSetting.IgnorePostFlairTemplate] as string | undefined;
     if (posts.length && postFlairTemplateToIgnore) {
         const postTemplates = postFlairTemplateToIgnore.split(",").map(template => template.toLowerCase().trim());
         posts = posts.filter(post => !post.flair || !post.flair.templateId || !postTemplates.includes(post.flair.templateId.toLowerCase()));
-        console.log(`${posts.length} posts remain after excluding post flair template IDs.`);
+        console.log(`Post checker: ${posts.length} posts remain after excluding post flair template IDs.`);
     }
 
     const userFlairToIgnore = settings[AppSetting.IgnoreUserFlairText] as string | undefined;
@@ -123,7 +126,7 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
             const usersWithMatchingFlair = userFlairs.filter(item => item.flair && item.flair.flairText && flairList.includes(item.flair.flairText.toLowerCase()));
             if (usersWithMatchingFlair.length) {
                 posts = posts.filter(post => !usersWithMatchingFlair.some(user => user.username === post.authorName));
-                console.log(`${posts.length} posts remain after excluding user flair text.`);
+                console.log(`Post checker: ${posts.length} posts remain after excluding user flair text.`);
             }
         }
 
@@ -132,7 +135,7 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
             const usersWithMatchingFlair = userFlairs.filter(item => item.flair && item.flair.flairCssClass && flairList.includes(item.flair.flairCssClass.toLowerCase()));
             if (usersWithMatchingFlair.length) {
                 posts = posts.filter(post => !usersWithMatchingFlair.some(user => user.username === post.authorName));
-                console.log(`${posts.length} posts remain after excluding user flair CSS class.`);
+                console.log(`Post checker: ${posts.length} posts remain after excluding user flair CSS class.`);
             }
         }
     }
@@ -150,8 +153,98 @@ export async function checkForPostsToLock (_event: ScheduledJobEvent, context: T
                 });
             }
         }
-        console.log(`${posts.length} posts have been locked.`);
+        console.log(`Post checker: ${posts.length} posts have been locked.`);
     }
 
     await context.redis.zRem(POST_LIST, postsDueChecking.map(item => item.member));
+    await scheduleNextAdhocRun(context);
 }
+
+export async function rescheduleAdhocTasks (_: ScheduledJobEvent, context: TriggerContext) {
+    console.log("Settings Update: Settings have been updated. Requeuing jobs if needed.");
+    const jobs = await context.scheduler.listJobs();
+
+    const adhocJobs = jobs.filter(job => job.name === CHECK_FOR_POSTS_TO_LOCK_JOB && job.data?.source === "adhoc");
+    if (adhocJobs.length) {
+        console.log("Settings Update: Cancelled adhoc jobs.");
+        await Promise.all(adhocJobs.map(job => context.scheduler.cancelJob(job.id)));
+    }
+
+    const settings = await context.settings.getAll();
+    if (settings[AppSetting.HandleHistoricalPosts] as boolean ?? false) {
+        const redisKey = "historicalPostsQueued";
+        const historicalPostsQueued = await context.redis.get(redisKey);
+        if (!historicalPostsQueued) {
+            console.log("Settings Update: Historical posts option enabled. Queueing most recent 1000 posts.");
+            const subreddit = await context.reddit.getCurrentSubreddit();
+            const posts = await context.reddit.getNewPosts({
+                subredditName: subreddit.name,
+                limit: 1000,
+            }).all();
+            const unlockedPosts = posts.filter(post => !post.locked);
+            console.log(`Settings Update: Found ${unlockedPosts.length} posts to add to queue.`);
+            await context.redis.zAdd(POST_LIST, ...unlockedPosts.map(post => <ZMember>({member: post.id, score: post.createdAt.getTime()})));
+            await context.redis.set(redisKey, new Date().getTime().toString());
+        }
+    }
+
+    await scheduleNextAdhocRun(context);
+}
+
+export async function scheduleNextAdhocRun (context: TriggerContext) {
+    // Get the first post ordered by date ascending.
+    const postsDueChecking = await context.redis.zRange(POST_LIST, 0, 0, {by: "rank"});
+    if (postsDueChecking.length === 0) {
+        console.log("Adhoc Scheduler: No posts in lock queue. No ad-hoc task is needed.");
+        return;
+    }
+
+    // Is there already an ad-hoc scheduled job? If so, return.
+    const jobs = await context.scheduler.listJobs();
+    if (jobs.some(job => job.name === CHECK_FOR_POSTS_TO_LOCK_JOB && job.data?.source === "adhoc")) {
+        console.log("Adhoc Scheduler: There is already an ad-hoc task scheduled.");
+        return;
+    }
+
+    const settings = await context.settings.getAll();
+    const lockDelay = settings[AppSetting.LockDelay] as number ?? 1;
+    const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as string[] ?? [TimeUnit.Months])[0];
+
+    // If next lock event is due in the past, use the current date/time otherwise use the lock time due from the first post in queue.
+    const nextLockTime = _.max([new Date(), lockTime(new Date(postsDueChecking[0].score), lockDelay, lockDelayUnits)]) ?? new Date();
+
+    console.log(`Adhoc Scheduler: Next lock event due: ${nextLockTime.toISOString()}`);
+
+    const cron = await context.redis.get("cron");
+    if (!cron) {
+        // Should never happen, because this is set during install/upgrade.
+        console.log("Adhoc Scheduler: Cron is not set in redis!");
+        return;
+    }
+
+    const interval = parseExpression(cron);
+    const nextScheduledRun = interval.next().toDate();
+    console.log(`Adhoc Scheduler: Next scheduled job run: ${nextScheduledRun.toISOString()}`);
+
+    if (nextLockTime > nextScheduledRun) {
+        console.log("Adhoc Scheduler: Next scheduled run is before the next lock event. No ad-hoc task needed.");
+        return;
+    }
+
+    if (differenceInSeconds(nextScheduledRun, nextLockTime) < 30) {
+        // We don't need an ad-hoc run if the next scheduled run time is in the next 30 seconds.
+        console.log("Adhoc Scheduler: Scheduled run is within the next 30 seconds of the next lock event. No ad-hoc task needed.");
+        return;
+    }
+
+    const nextAdhocRun = addSeconds(nextLockTime, 1);
+
+    await context.scheduler.runJob({
+        data: {source: "adhoc"},
+        runAt: nextAdhocRun,
+        name: CHECK_FOR_POSTS_TO_LOCK_JOB,
+    });
+
+    console.log(`Adhoc Scheduler: Ad-hoc job scheduled for ${nextAdhocRun.toISOString()}`);
+}
+

@@ -1,4 +1,6 @@
 import {SettingsFormField, SettingsFormFieldValidatorEvent} from "@devvit/public-api";
+import {addSeconds} from "date-fns";
+import {RESCHEDULE_ADHOC_TASKS_JOB} from "./constants.js";
 
 export enum AppSetting {
     LockDelay = "lockDelay",
@@ -11,6 +13,7 @@ export enum AppSetting {
     IgnorePostFlairCSSClass = "ignorePostFlairCSSClass",
     IgnorePostFlairTemplate = "ignorePostFlairTemplate",
     LockedFlairTemplateId = "lockedFlairTemplateId",
+    HandleHistoricalPosts = "handleHistoricalPosts",
 }
 
 export enum TimeUnit {
@@ -35,10 +38,16 @@ export const appSettings: SettingsFormField[] = [
         type: "number",
         label: "Lock delay",
         defaultValue: 1,
-        onValidate: ({value}) => {
+        onValidate: async ({value}, context) => {
             if (value && value < 1) {
                 return "Value must be at least 1";
             }
+
+            // Schedule may have changed, so reschedule next ad-hoc run.
+            await context.scheduler.runJob({
+                runAt: addSeconds(new Date(), 5),
+                name: RESCHEDULE_ADHOC_TASKS_JOB,
+            });
         },
     },
     {
@@ -111,5 +120,12 @@ export const appSettings: SettingsFormField[] = [
                 return `Flair template ${value} is not a valid flair template ID`;
             }
         },
+    },
+    {
+        name: AppSetting.HandleHistoricalPosts,
+        type: "boolean",
+        label: "Lock posts made before app install",
+        helpText: "If enabled, the app will do a one-time look back on the most recent 1000 posts in the subreddit and lock those.",
+        defaultValue: false,
     },
 ];

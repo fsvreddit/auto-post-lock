@@ -1,4 +1,4 @@
-import {getCutoff} from "./lockPosts.js";
+import {lockTime} from "./lockPosts.js";
 import {TimeUnit} from "./settings.js";
 
 test("All time units handled", () => {
@@ -6,7 +6,7 @@ test("All time units handled", () => {
 
     for (const unit of Object.values(TimeUnit)) {
         try {
-            getCutoff(1, unit);
+            lockTime(new Date(), 1, unit);
         } catch {
             unhandledTimeUnits.push(unit);
         }

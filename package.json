@@ -11,6 +11,7 @@
   "dependencies": {
     "@devvit/public-api": "0.10.19",
     "@types/lodash": "^4.17.0",
+    "cron-parser": "^4.9.0",
     "date-fns": "^3.6.0",
     "lodash": "^4.17.21"
   },
