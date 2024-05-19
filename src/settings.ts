@@ -86,19 +86,19 @@ export const appSettings: SettingsFormField[] = [
         name: AppSetting.IgnorePostFlairText,
         type: "string",
         label: "Ignore posts with one of these flairs",
-        helpText: "Optional. A comma-separated list of user flair text that won't have posts auto-locked",
+        helpText: "Optional. A comma-separated list of post flair text that won't have posts auto-locked",
     },
     {
         name: AppSetting.IgnorePostFlairCSSClass,
         type: "string",
         label: "Ignore posts with one of these flair CSS classes",
-        helpText: "Optional. A comma-separated list of user flair CSS classes that won't have posts auto-locked",
+        helpText: "Optional. A comma-separated list of post flair CSS classes that won't have posts auto-locked",
     },
     {
         name: AppSetting.IgnorePostFlairTemplate,
         type: "string",
         label: "Ignore posts with one of these flair template IDs",
-        helpText: "Optional. A comma-separated list of user flair template IDs that won't have posts auto-locked",
+        helpText: "Optional. A comma-separated list of post flair template IDs that won't have posts auto-locked",
         onValidate: ({value}) => {
             if (!value) {
                 return;
