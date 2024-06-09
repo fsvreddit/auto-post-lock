@@ -9,9 +9,10 @@ export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, con
     const currentJobs = await context.scheduler.listJobs();
     await Promise.all(currentJobs.map(job => context.scheduler.cancelJob(job.id)));
 
-    // Choose a randomised schedule per install. Run every 20 minutes.
-    const minute = Math.floor(Math.random() * 20);
-    const cron = `${minute}/20 * * * *`;
+    // Choose a randomised schedule per install. Run once a day.
+    const minute = Math.floor(Math.random() * 60);
+    const hour = Math.floor(Math.random() * 24);
+    const cron = `${minute} ${hour} * * *`;
     await context.redis.set("cron", cron);
 
     await context.scheduler.runJob({
