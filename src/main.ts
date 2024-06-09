@@ -4,6 +4,7 @@ import {handlePostSubmitEvent} from "./postSubmitHandler.js";
 import {handleAppInstallOrUpgrade} from "./installEvents.js";
 import {checkForPostsToLock, rescheduleAdhocTasks} from "./lockPosts.js";
 import {CHECK_FOR_POSTS_TO_LOCK_JOB, RESCHEDULE_ADHOC_TASKS_JOB} from "./constants.js";
+import {handleCommentSubmitEvent} from "./commentSubmitHandler.js";
 
 Devvit.addSettings(appSettings);
 
@@ -15,6 +16,11 @@ Devvit.addTrigger({
 Devvit.addTrigger({
     event: "PostSubmit",
     onEvent: handlePostSubmitEvent,
+});
+
+Devvit.addTrigger({
+    event: "CommentSubmit",
+    onEvent: handleCommentSubmitEvent,
 });
 
 Devvit.addSchedulerJob({

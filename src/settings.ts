@@ -14,6 +14,7 @@ export enum AppSetting {
     IgnorePostFlairTemplate = "ignorePostFlairTemplate",
     LockedFlairTemplateId = "lockedFlairTemplateId",
     HandleHistoricalPosts = "handleHistoricalPosts",
+    LockPostsWhenCommentMade = "lockPostsWhenCommentMade",
 }
 
 export enum TimeUnit {
@@ -126,6 +127,13 @@ export const appSettings: SettingsFormField[] = [
         type: "boolean",
         label: "Lock posts made before app install",
         helpText: "If enabled, the app will do a one-time look back on the most recent 1000 posts in the subreddit and lock those.",
+        defaultValue: false,
+    },
+    {
+        name: AppSetting.LockPostsWhenCommentMade,
+        type: "boolean",
+        label: "Lock posts when a comment is made on an unlocked old post",
+        helpText: "If enabled, the app will lock posts when a comment is made on them, for posts that are older than the most recent 1000",
         defaultValue: false,
     },
 ];

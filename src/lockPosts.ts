@@ -71,7 +71,7 @@ export async function checkForPostsToLock (event: ScheduledJobEvent, context: Tr
 
     const subreddit = await context.reddit.getCurrentSubreddit();
 
-    if (posts.length && settings[AppSetting.IgnoreMods] as boolean) {
+    if (posts.length && settings[AppSetting.IgnoreMods]) {
         const modList = await context.reddit.getModerators({subredditName: subreddit.name}).all();
         posts = posts.filter(post => post.authorName !== "AutoModerator" && !modList.some(mod => post.authorName === mod.username));
         console.log(`Post checker: ${posts.length} posts remain after excluding moderators.`);
