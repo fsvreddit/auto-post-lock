@@ -1,4 +1,4 @@
-import {Post, ScheduledJobEvent, TriggerContext, User, UserFlair, ZMember} from "@devvit/public-api";
+import {Post, ScheduledJob, ScheduledJobEvent, TriggerContext, User, UserFlair, ZMember} from "@devvit/public-api";
 import {addDays, addHours, addMinutes, addMonths, addSeconds, addWeeks, differenceInSeconds} from "date-fns";
 import {AppSetting, TimeUnit} from "./settings.js";
 import {CHECK_FOR_POSTS_TO_LOCK_JOB, POST_LIST} from "./constants.js";
@@ -201,8 +201,9 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
 
     // Is there already an ad-hoc scheduled job? If so, return.
     const jobs = await context.scheduler.listJobs();
-    if (jobs.some(job => job.name === CHECK_FOR_POSTS_TO_LOCK_JOB && job.data?.source === "adhoc")) {
-        console.log("Adhoc Scheduler: There is already an ad-hoc task scheduled.");
+    const adhocJob = jobs.find(job => job.name === CHECK_FOR_POSTS_TO_LOCK_JOB && job.data?.source === "adhoc") as ScheduledJob | undefined;
+    if (adhocJob) {
+        console.log(`Adhoc Scheduler: There is already an ad-hoc task scheduled for ${adhocJob.runAt.toISOString()}.`);
         return;
     }
 
