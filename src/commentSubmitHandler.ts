@@ -1,7 +1,7 @@
-import {CommentSubmit} from "@devvit/protos";
-import {TriggerContext, User} from "@devvit/public-api";
-import {AppSetting, TimeUnit} from "./settings.js";
-import {lockTime} from "./lockPosts.js";
+import { CommentSubmit } from "@devvit/protos";
+import { TriggerContext, User } from "@devvit/public-api";
+import { AppSetting, TimeUnit } from "./settings.js";
+import { lockTime } from "./lockPosts.js";
 
 export async function handleCommentSubmitEvent (event: CommentSubmit, context: TriggerContext) {
     if (!event.post) {
@@ -14,9 +14,9 @@ export async function handleCommentSubmitEvent (event: CommentSubmit, context: T
     }
 
     const lockDelay = settings[AppSetting.LockDelay] as number | undefined;
-    const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as TimeUnit[] ?? [TimeUnit.Months])[0];
+    const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as TimeUnit[] | undefined ?? [TimeUnit.Months])[0];
 
-    if (!lockDelay || !lockDelayUnits) {
+    if (!lockDelay) {
         return;
     }
 
@@ -29,7 +29,7 @@ export async function handleCommentSubmitEvent (event: CommentSubmit, context: T
     const post = await context.reddit.getPostById(event.post.id);
 
     if (settings[AppSetting.IgnoreMods]) {
-        const modList = await context.reddit.getModerators({subredditName: post.subredditName}).all();
+        const modList = await context.reddit.getModerators({ subredditName: post.subredditName }).all();
         if (post.authorName === "AutoModerator" || modList.some(mod => post.authorName === mod.username)) {
             console.log("CommentSubmit: Post was created by a moderator so will not be locked.");
             return;
