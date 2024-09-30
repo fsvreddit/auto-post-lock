@@ -1,4 +1,4 @@
-import { Post, ScheduledJob, ScheduledJobEvent, TriggerContext, User, UserFlair, ZMember } from "@devvit/public-api";
+import { JobContext, JSONObject, Post, ScheduledJob, ScheduledJobEvent, TriggerContext, User, UserFlair, ZMember } from "@devvit/public-api";
 import { addDays, addHours, addMinutes, addMonths, addSeconds, addWeeks, differenceInSeconds } from "date-fns";
 import { AppSetting, TimeUnit } from "./settings.js";
 import { CHECK_FOR_POSTS_TO_LOCK_JOB, POST_LIST } from "./constants.js";
@@ -35,7 +35,7 @@ async function getUserFlair (user: User, subredditName: string): Promise<UserAnd
     };
 }
 
-export async function checkForPostsToLock (event: ScheduledJobEvent, context: TriggerContext) {
+export async function checkForPostsToLock (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
     console.log(`Post checker: Running job of type ${event.data?.source as string | undefined ?? "unknown"}`);
     const settings = await context.settings.getAll();
     const lockDelay = settings[AppSetting.LockDelay] as number | undefined ?? 1;
@@ -158,7 +158,7 @@ export async function checkForPostsToLock (event: ScheduledJobEvent, context: Tr
     await scheduleNextAdhocRun(context);
 }
 
-export async function rescheduleAdhocTasks (_: ScheduledJobEvent, context: TriggerContext) {
+export async function rescheduleAdhocTasks (_: unknown, context: JobContext) {
     console.log("Settings Update: Settings have been updated. Requeuing jobs if needed.");
     const jobs = await context.scheduler.listJobs();
 
