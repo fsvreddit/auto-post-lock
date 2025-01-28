@@ -1,8 +1,8 @@
-import {TriggerContext} from "@devvit/public-api";
-import {AppInstall, AppUpgrade} from "@devvit/protos";
-import {scheduleNextAdhocRun} from "./lockPosts.js";
-import {parseExpression} from "cron-parser";
-import {CHECK_FOR_POSTS_TO_LOCK_JOB} from "./constants.js";
+import { TriggerContext } from "@devvit/public-api";
+import { AppInstall, AppUpgrade } from "@devvit/protos";
+import { scheduleNextAdhocRun } from "./lockPosts.js";
+import { parseExpression } from "cron-parser";
+import { CHECK_FOR_POSTS_TO_LOCK_JOB } from "./constants.js";
 
 export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, context: TriggerContext) {
     // Clear down existing scheduler jobs, if any, in case a new release changes the schedule
@@ -16,7 +16,7 @@ export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, con
     await context.redis.set("cron", cron);
 
     await context.scheduler.runJob({
-        data: {source: "scheduled"},
+        data: { source: "scheduled" },
         cron,
         name: CHECK_FOR_POSTS_TO_LOCK_JOB,
     });

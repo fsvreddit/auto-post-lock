@@ -1,10 +1,10 @@
-import {Devvit} from "@devvit/public-api";
-import {appSettings} from "./settings.js";
-import {handlePostSubmitEvent} from "./postSubmitHandler.js";
-import {handleAppInstallOrUpgrade} from "./installEvents.js";
-import {checkForPostsToLock, rescheduleAdhocTasks} from "./lockPosts.js";
-import {CHECK_FOR_POSTS_TO_LOCK_JOB, RESCHEDULE_ADHOC_TASKS_JOB} from "./constants.js";
-import {handleCommentSubmitEvent} from "./commentSubmitHandler.js";
+import { Devvit } from "@devvit/public-api";
+import { appSettings } from "./settings.js";
+import { handlePostSubmitEvent } from "./postSubmitHandler.js";
+import { handleAppInstallOrUpgrade } from "./installEvents.js";
+import { checkForPostsToLock, rescheduleAdhocTasks } from "./lockPosts.js";
+import { CHECK_FOR_POSTS_TO_LOCK_JOB, RESCHEDULE_ADHOC_TASKS_JOB } from "./constants.js";
+import { handleCommentSubmitEvent } from "./commentSubmitHandler.js";
 
 Devvit.addSettings(appSettings);
 

@@ -1,5 +1,5 @@
-import {lockTime} from "./lockPosts.js";
-import {TimeUnit} from "./settings.js";
+import { lockTime } from "./lockPosts.js";
+import { TimeUnit } from "./settings.js";
 
 test("All time units handled", () => {
     const unhandledTimeUnits: string[] = [];

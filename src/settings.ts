@@ -1,6 +1,6 @@
-import {SettingsFormField, SettingsFormFieldValidatorEvent} from "@devvit/public-api";
-import {addSeconds} from "date-fns";
-import {RESCHEDULE_ADHOC_TASKS_JOB} from "./constants.js";
+import { SettingsFormField, SettingsFormFieldValidatorEvent } from "@devvit/public-api";
+import { addSeconds } from "date-fns";
+import { RESCHEDULE_ADHOC_TASKS_JOB } from "./constants.js";
 
 export enum AppSetting {
     LockDelay = "lockDelay",
@@ -25,6 +25,7 @@ export enum TimeUnit {
     Months = "months",
 }
 
+// eslint-disable-next-line @typescript-eslint/no-invalid-void-type
 function selectFieldHasOptionChosen (event: SettingsFormFieldValidatorEvent<string[]>): void | string {
     if (!event.value || event.value.length !== 1) {
         return "You must choose an option";
@@ -39,7 +40,7 @@ export const appSettings: SettingsFormField[] = [
         type: "number",
         label: "Lock delay",
         defaultValue: 1,
-        onValidate: async ({value}, context) => {
+        onValidate: async ({ value }, context) => {
             if (value && value < 1) {
                 return "Value must be at least 1";
             }
@@ -55,7 +56,7 @@ export const appSettings: SettingsFormField[] = [
         name: AppSetting.LockDelayUnits,
         type: "select",
         label: "Lock delay units",
-        options: Object.entries(TimeUnit).map(([label, value]) => ({label, value})),
+        options: Object.entries(TimeUnit).map(([label, value]) => ({ label, value })),
         defaultValue: [TimeUnit.Months],
         onValidate: selectFieldHasOptionChosen,
     },
@@ -100,12 +101,12 @@ export const appSettings: SettingsFormField[] = [
         type: "string",
         label: "Ignore posts with one of these flair template IDs",
         helpText: "Optional. A comma-separated list of post flair template IDs that won't have posts auto-locked",
-        onValidate: ({value}) => {
+        onValidate: ({ value }) => {
             if (!value) {
                 return;
             }
             const templates = value.split(",").map(template => template.toLowerCase().trim());
-            const invalidTemplate = templates.find(template => !template.match(flairTemplateRegex));
+            const invalidTemplate = templates.find(template => !flairTemplateRegex.exec(template));
             if (invalidTemplate) {
                 return `Flair template ${invalidTemplate} is not a valid flair template ID`;
             }
@@ -116,8 +117,8 @@ export const appSettings: SettingsFormField[] = [
         type: "string",
         label: "Set flair on posts when locking posts",
         helpText: "Optional. A flair template ID to set when locking posts.",
-        onValidate: ({value}) => {
-            if (value && !value.match(flairTemplateRegex)) {
+        onValidate: ({ value }) => {
+            if (value && !flairTemplateRegex.exec(value)) {
                 return `Flair template ${value} is not a valid flair template ID`;
             }
         },
