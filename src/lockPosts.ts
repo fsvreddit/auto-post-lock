@@ -244,7 +244,7 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
 
     await context.scheduler.runJob({
         data: { source: "adhoc" },
-        runAt: nextAdhocRun,
+        runAt: nextAdhocRun < new Date() ? new Date() : nextAdhocRun,
         name: CHECK_FOR_POSTS_TO_LOCK_JOB,
     });
 
