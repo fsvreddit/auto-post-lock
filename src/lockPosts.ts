@@ -54,6 +54,10 @@ export async function checkForPostsToLock (event: ScheduledJobEvent<JSONObject |
     let posts: Post[] = [];
     for (const item of postsDueChecking) {
         const post = await context.reddit.getPostById(item.member);
+        if (settings[AppSetting.LockNSFWOnly] && !post.nsfw) {
+            continue;
+        }
+
         if (!post.locked) {
             posts.push(post);
         }

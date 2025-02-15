@@ -28,6 +28,10 @@ export async function handleCommentSubmitEvent (event: CommentSubmit, context: T
 
     const post = await context.reddit.getPostById(event.post.id);
 
+    if (settings[AppSetting.LockNSFWOnly] && !post.nsfw) {
+        return;
+    }
+
     if (settings[AppSetting.IgnoreMods]) {
         const modList = await context.reddit.getModerators({ subredditName: post.subredditName }).all();
         if (post.authorName === "AutoModerator" || modList.some(mod => post.authorName === mod.username)) {

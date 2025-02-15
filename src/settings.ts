@@ -5,6 +5,7 @@ import { RESCHEDULE_ADHOC_TASKS_JOB } from "./constants.js";
 export enum AppSetting {
     LockDelay = "lockDelay",
     LockDelayUnits = "lockDelayUnits",
+    LockNSFWOnly = "lockNSFWOnly",
     IgnoreMods = "ignoreMods",
     IgnoreUsers = "ignoreUsers",
     IgnoreUserFlairText = "ignoreUserFlairText",
@@ -59,6 +60,13 @@ export const appSettings: SettingsFormField[] = [
         options: Object.entries(TimeUnit).map(([label, value]) => ({ label, value })),
         defaultValue: [TimeUnit.Months],
         onValidate: selectFieldHasOptionChosen,
+    },
+    {
+        name: AppSetting.LockNSFWOnly,
+        type: "boolean",
+        label: "Only lock NSFW posts",
+        helpText: "If enabled, only NSFW posts will be locked",
+        defaultValue: false,
     },
     {
         name: AppSetting.IgnoreMods,
