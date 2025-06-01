@@ -12,6 +12,8 @@ This app is open source. You can find the code on Github [here](https://github.c
 
 ## Update History
 
+v1.2.5: Update Devvit and dependencies, no user facing changes
+
 v1.2.4: Add option to lock NSFW posts only
 
 v1.2.3: No user facing changes, updates to dependencies to fix security vulnerabilities and use latest Dev Platform libraries only.

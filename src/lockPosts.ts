@@ -2,8 +2,8 @@ import { JobContext, JSONObject, Post, ScheduledJob, ScheduledJobEvent, TriggerC
 import { addDays, addHours, addMinutes, addMonths, addSeconds, addWeeks, differenceInSeconds } from "date-fns";
 import { AppSetting, TimeUnit } from "./settings.js";
 import { CHECK_FOR_POSTS_TO_LOCK_JOB, POST_LIST } from "./constants.js";
-import _ from "lodash";
-import { parseExpression } from "cron-parser";
+import { max, uniq } from "lodash";
+import { CronExpressionParser } from "cron-parser";
 
 export function lockTime (date: Date, lockDelay: number, lockDelayUnits: TimeUnit) {
     switch (lockDelayUnits) {
@@ -105,7 +105,7 @@ export async function checkForPostsToLock (event: ScheduledJobEvent<JSONObject |
     const userFlairCSSClassToIgnore = settings[AppSetting.IgnoreUserFlairCSSClass] as string | undefined;
     if (posts.length && (userFlairToIgnore || userFlairCSSClassToIgnore)) {
         const distinctUsers: User[] = [];
-        for (const username of _.uniq(posts.map(post => post.authorName).filter(user => user !== "[deleted]"))) {
+        for (const username of uniq(posts.map(post => post.authorName).filter(user => user !== "[deleted]"))) {
             let user: User | undefined;
             try {
                 user = await context.reddit.getUserByUsername(username);
@@ -214,7 +214,7 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
     const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as TimeUnit[] | undefined ?? [TimeUnit.Months])[0];
 
     // If next lock event is due in the past, use the current date/time otherwise use the lock time due from the first post in queue.
-    const nextLockTime = _.max([new Date(), lockTime(new Date(postsDueChecking[0].score), lockDelay, lockDelayUnits)]) ?? new Date();
+    const nextLockTime = max([new Date(), lockTime(new Date(postsDueChecking[0].score), lockDelay, lockDelayUnits)]) ?? new Date();
 
     console.log(`Adhoc Scheduler: Next lock event due: ${nextLockTime.toISOString()}`);
 
@@ -225,7 +225,7 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
         return;
     }
 
-    const interval = parseExpression(cron);
+    const interval = CronExpressionParser.parse(cron);
     const nextScheduledRun = interval.next().toDate();
     console.log(`Adhoc Scheduler: Next scheduled job run: ${nextScheduledRun.toISOString()}`);
 

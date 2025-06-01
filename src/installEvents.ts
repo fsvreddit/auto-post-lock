@@ -1,7 +1,7 @@
 import { TriggerContext } from "@devvit/public-api";
 import { AppInstall, AppUpgrade } from "@devvit/protos";
 import { scheduleNextAdhocRun } from "./lockPosts.js";
-import { parseExpression } from "cron-parser";
+import { CronExpressionParser } from "cron-parser";
 import { CHECK_FOR_POSTS_TO_LOCK_JOB } from "./constants.js";
 
 export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, context: TriggerContext) {
@@ -21,7 +21,7 @@ export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, con
         name: CHECK_FOR_POSTS_TO_LOCK_JOB,
     });
 
-    const interval = parseExpression(cron);
+    const interval = CronExpressionParser.parse(cron);
     const nextScheduledRun = interval.next().toDate();
     console.log(`Install or Upgrade: Next scheduled job run: ${nextScheduledRun.toISOString()}`);
 
