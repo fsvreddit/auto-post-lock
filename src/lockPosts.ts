@@ -214,7 +214,7 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
     const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as TimeUnit[] | undefined ?? [TimeUnit.Months])[0];
 
     // If next lock event is due in the past, use the current date/time otherwise use the lock time due from the first post in queue.
-    const nextLockTime = max([new Date(), lockTime(new Date(postsDueChecking[0].score), lockDelay, lockDelayUnits)]) ?? new Date();
+    const nextLockTime = max([new Date(), lockTime(new Date(postsDueChecking[0].score), lockDelay, lockDelayUnits)]);
 
     console.log(`Adhoc Scheduler: Next lock event due: ${nextLockTime.toISOString()}`);
 
