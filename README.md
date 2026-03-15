@@ -12,6 +12,11 @@ This app is open source. You can find the code on Github [here](https://github.c
 
 ## Update History
 
+v1.2.7:
+
+* Add new option to remove comments made on old posts that were not already locked, where the "lock old posts" option is enabled
+* Exclude mod comments from comment checks
+
 v1.2.6: Update Devvit and dependencies, no user facing changes
 
 v1.2.5: Update Devvit and dependencies, no user facing changes

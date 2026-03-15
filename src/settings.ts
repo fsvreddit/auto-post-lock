@@ -16,6 +16,7 @@ export enum AppSetting {
     LockedFlairTemplateId = "lockedFlairTemplateId",
     HandleHistoricalPosts = "handleHistoricalPosts",
     LockPostsWhenCommentMade = "lockPostsWhenCommentMade",
+    RemoveCommentsWhenLocking = "removeCommentsWhenLocking",
 }
 
 export enum TimeUnit {
@@ -143,6 +144,13 @@ export const appSettings: SettingsFormField[] = [
         type: "boolean",
         label: "Lock posts when a comment is made on an unlocked old post",
         helpText: "If enabled, the app will lock posts when a comment is made on them, for posts that are older than the most recent 1000",
+        defaultValue: false,
+    },
+    {
+        name: AppSetting.RemoveCommentsWhenLocking,
+        type: "boolean",
+        label: "Remove comment when locking old post",
+        helpText: "If enabled, the app will remove newly made comments on a post when locking it.",
         defaultValue: false,
     },
 ];

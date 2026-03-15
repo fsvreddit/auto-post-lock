@@ -2,9 +2,15 @@ import { CommentSubmit } from "@devvit/protos";
 import { TriggerContext, User } from "@devvit/public-api";
 import { AppSetting, TimeUnit } from "./settings.js";
 import { lockTime } from "./lockPosts.js";
+import { isModerator } from "devvit-helpers";
 
 export async function handleCommentSubmitEvent (event: CommentSubmit, context: TriggerContext) {
-    if (!event.post) {
+    if (!event.post || !event.comment || !event.author) {
+        return;
+    }
+
+    const subredditName = context.subredditName ?? await context.reddit.getCurrentSubredditName();
+    if (event.author.name === "AutoModerator" || event.author.name === `${subredditName}-ModTeam`) {
         return;
     }
 
@@ -107,8 +113,17 @@ export async function handleCommentSubmitEvent (event: CommentSubmit, context: T
         }
     }
 
+    if (await isModerator(context.reddit, subredditName, event.author.name)) {
+        return;
+    }
+
     if (!post.stickied && !post.locked) {
         console.log(`CommentSubmit: Post ${event.post.id} was created before the lock threshold. Locking post.`);
         await post.lock();
+
+        if (settings[AppSetting.RemoveCommentsWhenLocking]) {
+            const comment = await context.reddit.getCommentById(event.comment.id);
+            await comment.remove();
+        }
     }
 }
