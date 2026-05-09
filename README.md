@@ -8,9 +8,11 @@ You can exclude posts from auto-locking by name, user flair or post flair. These
 
 Finally, you can optionally choose to set a flair using its flair template ID at the point of locking a post.
 
-This app is open source. You can find the code on Github [here](https://github.com/fsvreddit/auto-post-lock).
+This app is open source. [You can find the code on Github here](https://github.com/fsvreddit/auto-post-lock).
 
 ## Update History
+
+v1.2.8: Mitigate against duplicate actions if the Developer Platform is having issues
 
 v1.2.7:
 

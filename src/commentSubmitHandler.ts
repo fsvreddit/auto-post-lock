@@ -3,6 +3,7 @@ import { TriggerContext, User } from "@devvit/public-api";
 import { AppSetting, TimeUnit } from "./settings.js";
 import { lockTime } from "./lockPosts.js";
 import { isModerator } from "devvit-helpers";
+import { hasTriggerBeenHandled } from "@fsvreddit/fsv-devvit-helpers";
 
 export async function handleCommentSubmitEvent (event: CommentSubmit, context: TriggerContext) {
     if (!event.post || !event.comment || !event.author) {
@@ -23,6 +24,11 @@ export async function handleCommentSubmitEvent (event: CommentSubmit, context: T
     const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as TimeUnit[] | undefined ?? [TimeUnit.Months])[0];
 
     if (!lockDelay) {
+        return;
+    }
+
+    if (await hasTriggerBeenHandled(context.redis, event.comment.id)) {
+        console.log("CommentSubmit: This comment submit event has already been handled, so skipping.");
         return;
     }
 
