@@ -1,9 +1,10 @@
-import { JobContext, JSONObject, Post, ScheduledJob, ScheduledJobEvent, TriggerContext, User, UserFlair, ZMember } from "@devvit/public-api";
+import { JobContext, JSONObject, Post, ScheduledJob, ScheduledJobEvent, TriggerContext, User, UserFlair } from "@devvit/public-api";
 import { addDays, addHours, addMinutes, addMonths, addSeconds, addWeeks, differenceInSeconds } from "date-fns";
 import { AppSetting, TimeUnit } from "./settings.js";
-import { CHECK_FOR_POSTS_TO_LOCK_JOB, POST_LIST } from "./constants.js";
+import { POST_LIST, SchedulerJob } from "./constants.js";
 import { max, uniq } from "lodash";
 import { CronExpressionParser } from "cron-parser";
+import { hasTriggerBeenHandled } from "@fsvreddit/fsv-devvit-helpers";
 
 export function lockTime (date: Date, lockDelay: number, lockDelayUnits: TimeUnit) {
     switch (lockDelayUnits) {
@@ -36,6 +37,12 @@ async function getUserFlair (user: User, subredditName: string): Promise<UserAnd
 }
 
 export async function checkForPostsToLock (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
+    const jobGuid = event.data?.jobGuid as string | undefined;
+    if (jobGuid && await hasTriggerBeenHandled(context.redis, `job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
+        console.warn(`Post checker: Job with guid ${jobGuid} has already been handled. Skipping.`);
+        return;
+    }
+
     console.log(`Post checker: Running job of type ${event.data?.source as string | undefined ?? "unknown"}`);
     const settings = await context.settings.getAll();
     const lockDelay = settings[AppSetting.LockDelay] as number | undefined ?? 1;
@@ -162,11 +169,17 @@ export async function checkForPostsToLock (event: ScheduledJobEvent<JSONObject |
     await scheduleNextAdhocRun(context);
 }
 
-export async function rescheduleAdhocTasks (_: unknown, context: JobContext) {
+export async function rescheduleAdhocTasks (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
+    const jobGuid = event.data?.jobGuid as string | undefined;
+    if (jobGuid && await hasTriggerBeenHandled(context.redis, `job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
+        console.warn(`Task Rescheduler: Job with guid ${jobGuid} has already been handled. Skipping.`);
+        return;
+    }
+
     console.log("Settings Update: Settings have been updated. Requeuing jobs if needed.");
     const jobs = await context.scheduler.listJobs();
 
-    const adhocJobs = jobs.filter(job => job.name === CHECK_FOR_POSTS_TO_LOCK_JOB && job.data?.source === "adhoc");
+    const adhocJobs = jobs.filter(job => job.name === SchedulerJob.CheckForPostsToLock as string && job.data?.source === "adhoc");
     if (adhocJobs.length) {
         console.log("Settings Update: Cancelled adhoc jobs.");
         await Promise.all(adhocJobs.map(job => context.scheduler.cancelJob(job.id)));
@@ -185,7 +198,7 @@ export async function rescheduleAdhocTasks (_: unknown, context: JobContext) {
             }).all();
             const unlockedPosts = posts.filter(post => !post.locked);
             console.log(`Settings Update: Found ${unlockedPosts.length} posts to add to queue.`);
-            await context.redis.zAdd(POST_LIST, ...unlockedPosts.map(post => ({ member: post.id, score: post.createdAt.getTime() } as ZMember)));
+            await context.redis.zAdd(POST_LIST, ...unlockedPosts.map(post => ({ member: post.id, score: post.createdAt.getTime() })));
             await context.redis.set(redisKey, new Date().getTime().toString());
         }
     }
@@ -203,7 +216,7 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
 
     // Is there already an ad-hoc scheduled job? If so, return.
     const jobs = await context.scheduler.listJobs();
-    const adhocJob = jobs.find(job => job.name === CHECK_FOR_POSTS_TO_LOCK_JOB && job.data?.source === "adhoc") as ScheduledJob | undefined;
+    const adhocJob = jobs.find(job => job.name === SchedulerJob.CheckForPostsToLock as string && job.data?.source === "adhoc") as ScheduledJob | undefined;
     if (adhocJob) {
         console.log(`Adhoc Scheduler: There is already an ad-hoc task scheduled for ${adhocJob.runAt.toISOString()}.`);
         return;
@@ -243,9 +256,9 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
     const nextAdhocRun = addSeconds(nextLockTime, 1);
 
     await context.scheduler.runJob({
-        data: { source: "adhoc" },
+        data: { source: "adhoc", jobGuid: crypto.randomUUID() },
         runAt: nextAdhocRun < new Date() ? new Date() : nextAdhocRun,
-        name: CHECK_FOR_POSTS_TO_LOCK_JOB,
+        name: SchedulerJob.CheckForPostsToLock,
     });
 
     console.log(`Adhoc Scheduler: Ad-hoc job scheduled for ${nextAdhocRun.toISOString()}`);

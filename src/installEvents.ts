@@ -2,7 +2,7 @@ import { TriggerContext } from "@devvit/public-api";
 import { AppInstall, AppUpgrade } from "@devvit/protos";
 import { scheduleNextAdhocRun } from "./lockPosts.js";
 import { CronExpressionParser } from "cron-parser";
-import { CHECK_FOR_POSTS_TO_LOCK_JOB } from "./constants.js";
+import { SchedulerJob } from "./constants.js";
 
 export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, context: TriggerContext) {
     // Clear down existing scheduler jobs, if any, in case a new release changes the schedule
@@ -18,7 +18,7 @@ export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, con
     await context.scheduler.runJob({
         data: { source: "scheduled" },
         cron,
-        name: CHECK_FOR_POSTS_TO_LOCK_JOB,
+        name: SchedulerJob.CheckForPostsToLock,
     });
 
     const interval = CronExpressionParser.parse(cron);

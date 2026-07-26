@@ -1,6 +1,6 @@
 import { SettingsFormField, SettingsFormFieldValidatorEvent } from "@devvit/public-api";
 import { addSeconds } from "date-fns";
-import { RESCHEDULE_ADHOC_TASKS_JOB } from "./constants.js";
+import { SchedulerJob } from "./constants.js";
 
 export enum AppSetting {
     LockDelay = "lockDelay",
@@ -50,7 +50,8 @@ export const appSettings: SettingsFormField[] = [
             // Schedule may have changed, so reschedule next ad-hoc run.
             await context.scheduler.runJob({
                 runAt: addSeconds(new Date(), 5),
-                name: RESCHEDULE_ADHOC_TASKS_JOB,
+                name: SchedulerJob.RescheduleAdhocTasks,
+                data: { jobGuid: crypto.randomUUID() },
             });
         },
     },
