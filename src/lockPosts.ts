@@ -1,4 +1,5 @@
-import { JobContext, JSONObject, Post, ScheduledJob, ScheduledJobEvent, TriggerContext, User, UserFlair } from "@devvit/public-api";
+/* eslint-disable @typescript-eslint/consistent-type-definitions */
+import { JobContext, Post, ScheduledJob, ScheduledJobEvent, TriggerContext, User, UserFlair } from "@devvit/public-api";
 import { addDays, addHours, addMinutes, addMonths, addSeconds, addWeeks, differenceInSeconds } from "date-fns";
 import { AppSetting, TimeUnit } from "./settings.js";
 import { POST_LIST, SchedulerJob } from "./constants.js";
@@ -36,14 +37,19 @@ async function getUserFlair (user: User, subredditName: string): Promise<UserAnd
     };
 }
 
-export async function checkForPostsToLock (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
-    const jobGuid = event.data?.jobGuid as string | undefined;
+export type CheckForPostsToLockEventData = {
+    source: "adhoc" | "scheduled";
+    jobGuid?: string;
+};
+
+export async function checkForPostsToLock (event: ScheduledJobEvent<CheckForPostsToLockEventData>, context: JobContext) {
+    const jobGuid = event.data.jobGuid;
     if (jobGuid && await hasTriggerBeenHandled(context.redis, `job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
         console.warn(`Post checker: Job with guid ${jobGuid} has already been handled. Skipping.`);
         return;
     }
 
-    console.log(`Post checker: Running job of type ${event.data?.source as string | undefined ?? "unknown"}`);
+    console.log(`Post checker: Running job of type ${event.data.source}`);
     const settings = await context.settings.getAll();
     const lockDelay = settings[AppSetting.LockDelay] as number | undefined ?? 1;
     const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as TimeUnit[] | undefined ?? [TimeUnit.Months])[0];
@@ -149,7 +155,7 @@ export async function checkForPostsToLock (event: ScheduledJobEvent<JSONObject |
         }
     }
 
-    if (posts.length) {
+    if (posts.length > 0) {
         const flairTemplate = settings[AppSetting.LockedFlairTemplateId] as string | undefined;
 
         for (const post of posts) {
@@ -161,6 +167,17 @@ export async function checkForPostsToLock (event: ScheduledJobEvent<JSONObject |
                     flairTemplateId: flairTemplate,
                 });
             }
+
+            const commentToAdd = settings[AppSetting.AddCommentWhenLocking] as string | undefined;
+            if (commentToAdd?.trim()) {
+                const newComment = await post.addComment({
+                    text: commentToAdd.trim() + `\n\n*I am a bot, and this action was performed automatically. Please [contact the moderators of this subreddit](https://www.reddit.com/message/compose/?to=/r/${context.subredditName}}) if you have any questions or concerns.*`,
+                });
+                await newComment.distinguish(true);
+
+                // Due to rate limiting, only process a single post in one batch, even if there are more.
+                break;
+            }
         }
         console.log(`Post checker: ${posts.length} posts have been locked.`);
     }
@@ -169,8 +186,12 @@ export async function checkForPostsToLock (event: ScheduledJobEvent<JSONObject |
     await scheduleNextAdhocRun(context);
 }
 
-export async function rescheduleAdhocTasks (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
-    const jobGuid = event.data?.jobGuid as string | undefined;
+export type RescheduleAdhocTasksEventData = {
+    jobGuid?: string;
+};
+
+export async function rescheduleAdhocTasks (event: ScheduledJobEvent<RescheduleAdhocTasksEventData>, context: JobContext) {
+    const jobGuid = event.data.jobGuid;
     if (jobGuid && await hasTriggerBeenHandled(context.redis, `job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
         console.warn(`Task Rescheduler: Job with guid ${jobGuid} has already been handled. Skipping.`);
         return;
@@ -253,11 +274,13 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
         return;
     }
 
-    const nextAdhocRun = addSeconds(nextLockTime, 1);
+    // Run at the next lock time plus one second, or ten seconds from now, whichever is later.
+    // This prevents rate limiting issues
+    const nextAdhocRun = max([addSeconds(nextLockTime, 1), addSeconds(new Date(), 10)]);
 
     await context.scheduler.runJob({
-        data: { source: "adhoc", jobGuid: crypto.randomUUID() },
-        runAt: nextAdhocRun < new Date() ? new Date() : nextAdhocRun,
+        data: { source: "adhoc", jobGuid: crypto.randomUUID() } satisfies CheckForPostsToLockEventData,
+        runAt: nextAdhocRun,
         name: SchedulerJob.CheckForPostsToLock,
     });
 

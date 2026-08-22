@@ -11,7 +11,7 @@ export async function handleCommentSubmitEvent (event: CommentSubmit, context: T
     }
 
     const subredditName = context.subredditName ?? await context.reddit.getCurrentSubredditName();
-    if (event.author.name === "AutoModerator" || event.author.name === `${subredditName}-ModTeam`) {
+    if (event.author.name === "AutoModerator" || event.author.name === `${subredditName}-ModTeam` || event.author.name === context.appSlug) {
         return;
     }
 

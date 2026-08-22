@@ -1,6 +1,7 @@
 import { SettingsFormField, SettingsFormFieldValidatorEvent } from "@devvit/public-api";
 import { addSeconds } from "date-fns";
 import { SchedulerJob } from "./constants.js";
+import { RescheduleAdhocTasksEventData } from "./lockPosts.js";
 
 export enum AppSetting {
     LockDelay = "lockDelay",
@@ -17,6 +18,7 @@ export enum AppSetting {
     HandleHistoricalPosts = "handleHistoricalPosts",
     LockPostsWhenCommentMade = "lockPostsWhenCommentMade",
     RemoveCommentsWhenLocking = "removeCommentsWhenLocking",
+    AddCommentWhenLocking = "addCommentWhenLocking",
 }
 
 export enum TimeUnit {
@@ -51,7 +53,7 @@ export const appSettings: SettingsFormField[] = [
             await context.scheduler.runJob({
                 runAt: addSeconds(new Date(), 5),
                 name: SchedulerJob.RescheduleAdhocTasks,
-                data: { jobGuid: crypto.randomUUID() },
+                data: { jobGuid: crypto.randomUUID() } satisfies RescheduleAdhocTasksEventData,
             });
         },
     },
@@ -153,5 +155,11 @@ export const appSettings: SettingsFormField[] = [
         label: "Remove comment when locking old post",
         helpText: "If enabled, the app will remove newly made comments on a post when locking it.",
         defaultValue: false,
+    },
+    {
+        name: AppSetting.AddCommentWhenLocking,
+        type: "paragraph",
+        label: "Add comment to posts when locking",
+        helpText: "Leave blank to skip adding a comment. Comments will be stickied, and a footer will be added to the comment to indicate that it was made by a bot.",
     },
 ];

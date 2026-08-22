@@ -1,6 +1,6 @@
 import { TriggerContext } from "@devvit/public-api";
 import { AppInstall, AppUpgrade } from "@devvit/protos";
-import { scheduleNextAdhocRun } from "./lockPosts.js";
+import { CheckForPostsToLockEventData, scheduleNextAdhocRun } from "./lockPosts.js";
 import { CronExpressionParser } from "cron-parser";
 import { SchedulerJob } from "./constants.js";
 
@@ -16,7 +16,7 @@ export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, con
     await context.redis.set("cron", cron);
 
     await context.scheduler.runJob({
-        data: { source: "scheduled" },
+        data: { source: "scheduled" } satisfies CheckForPostsToLockEventData,
         cron,
         name: SchedulerJob.CheckForPostsToLock,
     });

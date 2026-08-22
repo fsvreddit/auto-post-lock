@@ -12,6 +12,8 @@ This app is open source. [You can find the code on Github here](https://github.c
 
 ## Update History
 
+v1.3.0: Add option to add a sticky comment on posts when locking
+
 v1.2.9: Further mitigations against duplicate actions
 
 v1.2.8: Mitigate against duplicate actions if the Developer Platform is having issues
