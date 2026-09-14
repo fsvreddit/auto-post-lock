@@ -15,8 +15,8 @@ export async function handleAppInstallOrUpgrade (_: AppInstall | AppUpgrade, con
     const cron = `${minute} ${hour} * * *`;
     await context.redis.set("cron", cron);
 
-    await context.scheduler.runJob({
-        data: { source: "scheduled" } satisfies CheckForPostsToLockEventData,
+    await context.scheduler.runJob<CheckForPostsToLockEventData>({
+        data: { source: "scheduled" },
         cron,
         name: SchedulerJob.CheckForPostsToLock,
     });

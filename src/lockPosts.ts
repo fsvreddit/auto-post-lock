@@ -1,11 +1,12 @@
-/* eslint-disable @typescript-eslint/consistent-type-definitions */
-import { JobContext, Post, ScheduledJob, ScheduledJobEvent, TriggerContext, User, UserFlair } from "@devvit/public-api";
-import { addDays, addHours, addMinutes, addMonths, addSeconds, addWeeks, differenceInSeconds } from "date-fns";
+import { JobContext, Post, ScheduledJob, ScheduledJobEvent, SettingsValues, SubredditInfo, TriggerContext } from "@devvit/public-api";
+import { addDays, addHours, addMinutes, addMonths, addSeconds, addWeeks, differenceInSeconds, subMonths } from "date-fns";
 import { AppSetting, TimeUnit } from "./settings.js";
 import { POST_LIST, SchedulerJob } from "./constants.js";
-import { max, uniq } from "lodash";
+import { max } from "lodash";
 import { CronExpressionParser } from "cron-parser";
 import { hasTriggerBeenHandled } from "@fsvreddit/fsv-devvit-helpers";
+import { queueCommentToAdd } from "./commentQueue.js";
+import { isUserModerator } from "./modCache.js";
 
 export function lockTime (date: Date, lockDelay: number, lockDelayUnits: TimeUnit) {
     switch (lockDelayUnits) {
@@ -24,29 +25,135 @@ export function lockTime (date: Date, lockDelay: number, lockDelayUnits: TimeUni
     }
 }
 
-interface UserAndFlair {
-    username: string;
-    flair?: UserFlair;
-}
-
-async function getUserFlair (user: User, subredditName: string): Promise<UserAndFlair> {
-    const userFlair = await user.getUserFlairBySubreddit(subredditName);
-    return {
-        username: user.username,
-        flair: userFlair,
-    };
-}
-
 export type CheckForPostsToLockEventData = {
     source: "adhoc" | "scheduled";
     jobGuid?: string;
 };
+
+async function logRemoveAndReschedule (post: Post, message: string, context: JobContext) {
+    console.log(`Post checker: ${post.id}: ${message}`);
+    await context.redis.zRem(POST_LIST, [post.id]);
+    await scheduleNextAdhocRun(context);
+}
+
+async function handlePost (post: Post, settings: SettingsValues, subInfo: SubredditInfo, context: JobContext): Promise<string> {
+    console.log(`Post checker: Checking post ${post.id}, created ${post.createdAt.toISOString()}`);
+
+    const subredditName = context.subredditName ?? await context.reddit.getCurrentSubredditName();
+
+    if (subInfo.isArchivePostsEnabled && post.archived) {
+        return "Post is archived";
+    }
+
+    if (post.removedByCategory === "deleted" || post.title.startsWith("[deleted")) {
+        return "Post has been deleted.";
+    }
+
+    if (post.locked) {
+        return "Post is already locked.";
+    }
+
+    if (settings[AppSetting.LockNSFWOnly] && !post.nsfw) {
+        return "Post is not NSFW.";
+    }
+
+    if (settings[AppSetting.IgnoreMods] && await isUserModerator(post.authorName, context)) {
+        return "Post author is a moderator.";
+    }
+
+    const usersToIgnore = settings[AppSetting.IgnoreUsers] as string | undefined;
+    if (usersToIgnore) {
+        const userList = new Set(usersToIgnore.split(",").map(userName => userName.toLowerCase().trim()));
+        if (userList.has(post.authorName.toLowerCase())) {
+            return "Post author is in the ignore list.";
+        }
+    }
+
+    const postFlairToIgnore = settings[AppSetting.IgnorePostFlairText] as string | undefined;
+    if (postFlairToIgnore) {
+        const flairs = postFlairToIgnore.split(",").map(flair => flair.toLowerCase().trim());
+        if (post.flair?.text && flairs.includes(post.flair.text.toLowerCase())) {
+            return "Post flair text is in the ignore list.";
+        }
+    }
+
+    const postFlairCSSClassToIgnore = settings[AppSetting.IgnorePostFlairCSSClass] as string | undefined;
+    if (postFlairCSSClassToIgnore) {
+        const flairs = postFlairCSSClassToIgnore.split(",").map(flair => flair.toLowerCase().trim());
+        if (post.flair?.cssClass && flairs.includes(post.flair.cssClass.toLowerCase())) {
+            return "Post flair CSS class is in the ignore list.";
+        }
+    }
+
+    const postFlairTemplateToIgnore = settings[AppSetting.IgnorePostFlairTemplate] as string | undefined;
+    if (postFlairTemplateToIgnore) {
+        const postTemplates = postFlairTemplateToIgnore.split(",").map(template => template.toLowerCase().trim());
+        if (post.flair?.templateId && postTemplates.includes(post.flair.templateId.toLowerCase())) {
+            return "Post flair template ID is in the ignore list.";
+        }
+    }
+
+    const userFlairToIgnore = settings[AppSetting.IgnoreUserFlairText] as string | undefined;
+    if (userFlairToIgnore) {
+        const flairList = userFlairToIgnore.split(",").map(flair => flair.toLowerCase().trim());
+        if (post.authorFlair?.text && flairList.includes(post.authorFlair.text.toLowerCase())) {
+            return "Post author's flair text is in the ignore list.";
+        }
+    }
+
+    const userFlairCSSClassToIgnore = settings[AppSetting.IgnoreUserFlairCSSClass] as string | undefined;
+    if (userFlairCSSClassToIgnore) {
+        const flairList = userFlairCSSClassToIgnore.split(",").map(flair => flair.toLowerCase().trim());
+        if (post.authorFlair?.cssClass && flairList.includes(post.authorFlair.cssClass.toLowerCase())) {
+            return "Post author's flair CSS class is in the ignore list.";
+        }
+    }
+
+    await post.lock();
+
+    const outcomes = [
+        "locked.",
+    ];
+
+    const flairTemplate = settings[AppSetting.LockedFlairTemplateId] as string | undefined;
+    if (flairTemplate) {
+        await context.reddit.setPostFlair({
+            postId: post.id,
+            subredditName,
+            flairTemplateId: flairTemplate,
+        });
+        outcomes.push("flair has been set");
+    }
+
+    const commentToAdd = settings[AppSetting.AddCommentWhenLocking] as string | undefined;
+    if (commentToAdd?.trim()) {
+        await queueCommentToAdd({ postId: post.id, commentText: commentToAdd.trim() }, context);
+        outcomes.push("comment has been queued");
+    }
+
+    return "Post handled: " + outcomes.join(", ");
+}
 
 export async function checkForPostsToLock (event: ScheduledJobEvent<CheckForPostsToLockEventData>, context: JobContext) {
     const jobGuid = event.data.jobGuid;
     if (jobGuid && await hasTriggerBeenHandled(context.redis, `job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
         console.warn(`Post checker: Job with guid ${jobGuid} has already been handled. Skipping.`);
         return;
+    }
+
+    if (!jobGuid && await hasTriggerBeenHandled(context.redis, `job:${event.name}`, { expiration: addSeconds(new Date(), 5) })) {
+        console.warn(`Post checker: Job with name ${event.name} has already been handled. Skipping.`);
+        return;
+    }
+
+    const subredditName = context.subredditName ?? await context.reddit.getCurrentSubredditName();
+
+    const subInfo = await context.reddit.getSubredditInfoByName(subredditName);
+    if (subInfo.isArchivePostsEnabled) {
+        const removed = await context.redis.zRemRangeByScore(POST_LIST, 0, subMonths(new Date(), 6).getTime());
+        if (removed > 0) {
+            console.log(`Post checker: Removed ${removed} archived posts from the list.`);
+        }
     }
 
     console.log(`Post checker: Running job of type ${event.data.source}`);
@@ -56,134 +163,31 @@ export async function checkForPostsToLock (event: ScheduledJobEvent<CheckForPost
 
     const cutOffDate = lockTime(new Date(), -lockDelay, lockDelayUnits);
 
-    // Get first 50 posts that need checking.
-    const postsDueChecking = (await context.redis.zRange(POST_LIST, 0, cutOffDate.getTime(), { by: "score" })).slice(0, 50);
+    const postsDueChecking = await context.redis.zRange(POST_LIST, 0, cutOffDate.getTime(), { by: "score" });
     if (postsDueChecking.length === 0) {
         console.log("Post checker: No posts are due a check.");
         await scheduleNextAdhocRun(context);
         return;
     }
 
-    let posts: Post[] = [];
-    for (const item of postsDueChecking) {
-        const post = await context.reddit.getPostById(item.member);
-        if (settings[AppSetting.LockNSFWOnly] && !post.nsfw) {
-            continue;
-        }
+    console.log(`Post checker: ${postsDueChecking.length} posts are due a check.`);
 
-        if (!post.locked) {
-            posts.push(post);
-        }
+    const firstPost = postsDueChecking.shift();
+    if (!firstPost) {
+        console.error("Post checker: Lost the first post to check.");
+        await scheduleNextAdhocRun(context);
+        return;
     }
 
-    console.log(`Post checker: ${posts.length} posts need checking.`);
+    const post = await context.reddit.getPostById(firstPost.member);
 
-    const subreddit = await context.reddit.getCurrentSubreddit();
-
-    if (posts.length && settings[AppSetting.IgnoreMods]) {
-        const modList = await context.reddit.getModerators({ subredditName: subreddit.name }).all();
-        posts = posts.filter(post => post.authorName !== "AutoModerator" && !modList.some(mod => post.authorName === mod.username));
-        console.log(`Post checker: ${posts.length} posts remain after excluding moderators.`);
+    try {
+        const outcome = await handlePost(post, settings, subInfo, context);
+        await logRemoveAndReschedule(post, outcome, context);
+    } catch (error) {
+        console.error(`Post checker: Error handling post ${post.id}:`, error);
+        await logRemoveAndReschedule(post, "Error handling post.", context);
     }
-
-    const usersToIgnore = settings[AppSetting.IgnoreUsers] as string | undefined;
-    if (posts.length && usersToIgnore) {
-        const userList = usersToIgnore.split(",").map(userName => userName.toLowerCase().trim());
-        posts = posts.filter(post => !userList.includes(post.authorName.toLowerCase()));
-        console.log(`Post checker: ${posts.length} posts remain after excluding named users.`);
-    }
-
-    const postFlairToIgnore = settings[AppSetting.IgnorePostFlairText] as string | undefined;
-    if (posts.length && postFlairToIgnore) {
-        const flairs = postFlairToIgnore.split(",").map(flair => flair.toLowerCase().trim());
-        posts = posts.filter(post => !post.flair?.text || !flairs.includes(post.flair.text.toLowerCase()));
-        console.log(`Post checker: ${posts.length} posts remain after excluding post flair text.`);
-    }
-
-    const postFlairCSSClassToIgnore = settings[AppSetting.IgnorePostFlairCSSClass] as string | undefined;
-    if (posts.length && postFlairCSSClassToIgnore) {
-        const flairs = postFlairCSSClassToIgnore.split(",").map(flair => flair.toLowerCase().trim());
-        posts = posts.filter(post => !post.flair?.cssClass || !flairs.includes(post.flair.cssClass.toLowerCase()));
-        console.log(`Post checker: ${posts.length} posts remain after excluding post flair CSS class.`);
-    }
-
-    const postFlairTemplateToIgnore = settings[AppSetting.IgnorePostFlairTemplate] as string | undefined;
-    if (posts.length && postFlairTemplateToIgnore) {
-        const postTemplates = postFlairTemplateToIgnore.split(",").map(template => template.toLowerCase().trim());
-        posts = posts.filter(post => !post.flair?.templateId || !postTemplates.includes(post.flair.templateId.toLowerCase()));
-        console.log(`Post checker: ${posts.length} posts remain after excluding post flair template IDs.`);
-    }
-
-    const userFlairToIgnore = settings[AppSetting.IgnoreUserFlairText] as string | undefined;
-    const userFlairCSSClassToIgnore = settings[AppSetting.IgnoreUserFlairCSSClass] as string | undefined;
-    if (posts.length && (userFlairToIgnore || userFlairCSSClassToIgnore)) {
-        const distinctUsers: User[] = [];
-        for (const username of uniq(posts.map(post => post.authorName).filter(user => user !== "[deleted]"))) {
-            let user: User | undefined;
-            try {
-                user = await context.reddit.getUserByUsername(username);
-            } catch {
-                //
-            }
-
-            if (user) {
-                distinctUsers.push(user);
-            }
-        }
-
-        const userFlairs: UserAndFlair[] = [];
-        for (const user of distinctUsers) {
-            userFlairs.push(await getUserFlair(user, subreddit.name));
-        }
-
-        if (userFlairToIgnore) {
-            const flairList = userFlairToIgnore.split(",").map(flair => flair.toLowerCase().trim());
-            const usersWithMatchingFlair = userFlairs.filter(item => item.flair?.flairText && flairList.includes(item.flair.flairText.toLowerCase()));
-            if (usersWithMatchingFlair.length) {
-                posts = posts.filter(post => !usersWithMatchingFlair.some(user => user.username === post.authorName));
-                console.log(`Post checker: ${posts.length} posts remain after excluding user flair text.`);
-            }
-        }
-
-        if (posts.length && userFlairCSSClassToIgnore) {
-            const flairList = userFlairCSSClassToIgnore.split(",").map(flair => flair.toLowerCase().trim());
-            const usersWithMatchingFlair = userFlairs.filter(item => item.flair?.flairCssClass && flairList.includes(item.flair.flairCssClass.toLowerCase()));
-            if (usersWithMatchingFlair.length) {
-                posts = posts.filter(post => !usersWithMatchingFlair.some(user => user.username === post.authorName));
-                console.log(`Post checker: ${posts.length} posts remain after excluding user flair CSS class.`);
-            }
-        }
-    }
-
-    if (posts.length > 0) {
-        const flairTemplate = settings[AppSetting.LockedFlairTemplateId] as string | undefined;
-
-        for (const post of posts) {
-            await post.lock();
-            if (flairTemplate) {
-                await context.reddit.setPostFlair({
-                    postId: post.id,
-                    subredditName: subreddit.name,
-                    flairTemplateId: flairTemplate,
-                });
-            }
-
-            const commentToAdd = settings[AppSetting.AddCommentWhenLocking] as string | undefined;
-            if (commentToAdd?.trim()) {
-                const newComment = await post.addComment({
-                    text: commentToAdd.trim() + `\n\n*I am a bot, and this action was performed automatically. Please [contact the moderators of this subreddit](https://www.reddit.com/message/compose/?to=/r/${context.subredditName}}) if you have any questions or concerns.*`,
-                });
-                await newComment.distinguish(true);
-
-                // Due to rate limiting, only process a single post in one batch, even if there are more.
-                break;
-            }
-        }
-        console.log(`Post checker: ${posts.length} posts have been locked.`);
-    }
-
-    await context.redis.zRem(POST_LIST, postsDueChecking.map(item => item.member));
-    await scheduleNextAdhocRun(context);
 }
 
 export type RescheduleAdhocTasksEventData = {
@@ -237,10 +241,10 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
 
     // Is there already an ad-hoc scheduled job? If so, return.
     const jobs = await context.scheduler.listJobs();
-    const adhocJob = jobs.find(job => job.name === SchedulerJob.CheckForPostsToLock as string && job.data?.source === "adhoc") as ScheduledJob | undefined;
-    if (adhocJob) {
-        console.log(`Adhoc Scheduler: There is already an ad-hoc task scheduled for ${adhocJob.runAt.toISOString()}.`);
-        return;
+    const adhocJob = jobs.filter(job => job.name === SchedulerJob.CheckForPostsToLock as string && "runAt" in job && job.data?.source === "adhoc") as ScheduledJob[];
+    if (adhocJob.length > 0) {
+        console.log(`Adhoc Scheduler: Ad-hoc task(s) scheduled, cancelling`);
+        await Promise.all(adhocJob.map(job => context.scheduler.cancelJob(job.id)));
     }
 
     const settings = await context.settings.getAll();
@@ -248,9 +252,10 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
     const lockDelayUnits = (settings[AppSetting.LockDelayUnits] as TimeUnit[] | undefined ?? [TimeUnit.Months])[0];
 
     // If next lock event is due in the past, use the current date/time otherwise use the lock time due from the first post in queue.
-    const nextLockTime = max([new Date(), lockTime(new Date(postsDueChecking[0].score), lockDelay, lockDelayUnits)]);
+    const nextPostLockTime = lockTime(new Date(postsDueChecking[0].score), lockDelay, lockDelayUnits);
+    const nextLockTime = max([new Date(), nextPostLockTime]);
 
-    console.log(`Adhoc Scheduler: Next lock event due: ${nextLockTime.toISOString()}`);
+    console.log(`Adhoc Scheduler: Next lock event due: ${nextLockTime.toISOString()} for post due at ${nextPostLockTime.toISOString()}`);
 
     const cron = await context.redis.get("cron");
     if (!cron) {
@@ -276,10 +281,10 @@ export async function scheduleNextAdhocRun (context: TriggerContext) {
 
     // Run at the next lock time plus one second, or ten seconds from now, whichever is later.
     // This prevents rate limiting issues
-    const nextAdhocRun = max([addSeconds(nextLockTime, 1), addSeconds(new Date(), 10)]);
+    const nextAdhocRun = max([addSeconds(nextLockTime, 1), addSeconds(new Date(), 1)]);
 
-    await context.scheduler.runJob({
-        data: { source: "adhoc", jobGuid: crypto.randomUUID() } satisfies CheckForPostsToLockEventData,
+    await context.scheduler.runJob<CheckForPostsToLockEventData>({
+        data: { source: "adhoc", jobGuid: crypto.randomUUID() },
         runAt: nextAdhocRun,
         name: SchedulerJob.CheckForPostsToLock,
     });

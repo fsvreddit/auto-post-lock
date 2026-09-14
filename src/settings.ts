@@ -50,10 +50,10 @@ export const appSettings: SettingsFormField[] = [
             }
 
             // Schedule may have changed, so reschedule next ad-hoc run.
-            await context.scheduler.runJob({
+            await context.scheduler.runJob<RescheduleAdhocTasksEventData>({
                 runAt: addSeconds(new Date(), 5),
                 name: SchedulerJob.RescheduleAdhocTasks,
-                data: { jobGuid: crypto.randomUUID() } satisfies RescheduleAdhocTasksEventData,
+                data: { jobGuid: crypto.randomUUID() },
             });
         },
     },

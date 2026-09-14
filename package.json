@@ -9,19 +9,19 @@
     "test:unit": "vitest --run"
   },
   "dependencies": {
-    "@devvit/protos": "0.14.1",
-    "@devvit/public-api": "0.14.1",
-    "@fsvreddit/fsv-devvit-helpers": "github:fsvreddit/fsv-devvit-helpers",
+    "@devvit/protos": "0.14.3",
+    "@devvit/public-api": "0.14.3",
+    "@fsvreddit/fsv-devvit-helpers": "^0.1.13",
     "cron-parser": "^5.2.0",
     "date-fns": "^4.0.0",
     "devvit-helpers": "^0.11.0",
     "lodash": "^4.17.21"
   },
   "devDependencies": {
-    "@fsvreddit/eslint-config": "github:fsvreddit/eslint-config",
+    "@fsvreddit/eslint-config": "^0.1.1",
     "@types/lodash": "^4.17.0",
     "eslint": "^10.0.0",
     "typescript": "5.8.3",
-    "vitest": "^4.0.16"
+    "vitest": "^5.0.0"
   }
 }
